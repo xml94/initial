@@ -75,6 +75,14 @@ class CycleGANModel(BaseModel):
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
 
+        # print('parameters are these:---------------------------------------------')
+        # for name, param in self.netG_A.named_parameters():
+        #     if param.requires_grad:
+        #         print(name)
+        #         print('')
+
+
+
         if self.isTrain:  # define discriminators
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
                                             opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
@@ -92,6 +100,10 @@ class CycleGANModel(BaseModel):
             self.criterionIdt = torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
+
+            # self.optimizer_G.add_param_group({'params' : self.netG_A.module.model.beta})
+            # print(self.optimizer_G.param_groups)
+
             self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
@@ -115,6 +127,7 @@ class CycleGANModel(BaseModel):
         self.rec_A = self.netG_B(self.fake_B)   # G_B(G_A(A))
         self.fake_A = self.netG_B(self.real_B)  # G_B(B)
         self.rec_B = self.netG_A(self.fake_A)   # G_A(G_B(B))
+        # print('-------------------------done')
 
     def backward_D_basic(self, netD, real, fake):
         """Calculate GAN loss for the discriminator
@@ -165,14 +178,19 @@ class CycleGANModel(BaseModel):
             self.loss_idt_A = 0
             self.loss_idt_B = 0
 
-        # GAN loss D_A(G_A(A))
-        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
-        # GAN loss D_B(G_B(B))
-        self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         # Forward cycle loss || G_B(G_A(A)) - A||
         self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
+        # self.loss_cycle_A.backward()
         # Backward cycle loss || G_A(G_B(B)) - B||
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
+        # self.loss_cycle_B.backward()
+        # GAN loss D_B(G_B(B))
+        self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
+        # self.loss_G_B.backward()
+        # GAN loss D_A(G_A(A))
+        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
+        # self.loss_G_A.backward()
+
         # combined loss and calculate gradients
         self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
         self.loss_G.backward()
@@ -180,11 +198,15 @@ class CycleGANModel(BaseModel):
     def optimize_parameters(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
         # forward
+        # print('----------------begin train----------------')
         self.forward()      # compute fake images and reconstruction images.
+        # print('----------------successfully forward----------------')
         # G_A and G_B
         self.set_requires_grad([self.netD_A, self.netD_B], False)  # Ds require no gradients when optimizing Gs
+        # print('--------------------------------------begin backward')
         self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
         self.backward_G()             # calculate gradients for G_A and G_B
+        # print('--------------------------------------')
         self.optimizer_G.step()       # update G_A and G_B's weights
         # D_A and D_B
         self.set_requires_grad([self.netD_A, self.netD_B], True)
