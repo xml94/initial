@@ -116,7 +116,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[], nz=0):
     """Create a generator
 
     Parameters:
@@ -153,7 +153,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     elif netG == 'unet_128':
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256':
-        net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+        net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, nz=nz)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -437,7 +437,7 @@ class ResnetBlock(nn.Module):
 class UnetGenerator(nn.Module):
     """Create a Unet-based generator"""
 
-    def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
+    def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, nz=4):
         """Construct a Unet generator
         Parameters:
             input_nc (int)  -- the number of channels in input images
@@ -452,29 +452,30 @@ class UnetGenerator(nn.Module):
         """
         super(UnetGenerator, self).__init__()
         # construct unet structure
-        unet_block = xml(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer,
+        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer, nz=nz,
                                              innermost=True, skip=False)  # add the innermost layer
         for i in range(num_downs - 5): # add intermediate layers with ngf * 8 filters
-            unet_block = xml(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block,
+            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, nz=0,
                                                  norm_layer=norm_layer, use_dropout=use_dropout, skip=False)
         # gradually reduce the number of filters from ngf * 8 to ngf
-        unet_block = xml(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, skip=False)
-        unet_block = xml(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer,
+        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, skip=False, nz=0,)
+        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer, nz=0,
                                              skip=False)
-        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer,
+        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer, nz=0,
                                              skip=False)
-        self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True,
+        self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, nz=0,
                                              norm_layer=norm_layer, skip=False)  # add the outermost layer
 
-    def forward(self, input):
+    def forward(self, input, z):
         """Standard forward"""
-        return self.model(input)
+        return self.model(input, z)
 
 class xml(nn.Module):
     def __init__(self, outer_nc, inner_nc, input_nc=None,submodule=None, outermost=False,
-                 innermost=False, norm_layer=nn.BatchNorm2d, use_dropout=False, skip=True):
+                 innermost=True, norm_layer=nn.BatchNorm2d, use_dropout=False, skip=True):
         super().__init__()
         self.outermost = outermost
+        self.innermost = innermost
         self.skip = skip
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
@@ -497,11 +498,13 @@ class xml(nn.Module):
             up = [uprelu, upconv, nn.Tanh()]
             model = down + [submodule] + up
         elif innermost:
-            upconv = nn.ConvTranspose2d(inner_nc, outer_nc,
+            upconv = nn.ConvTranspose2d(inner_nc + 4, outer_nc,
                                         kernel_size=4, stride=2,
                                         padding=1, bias=use_bias)
             down = [downrelu, downconv]
             up = [uprelu, upconv, upnorm]
+            self.down = down
+            self.up = up
             model = down + up
         else:
             upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
@@ -524,7 +527,9 @@ class xml(nn.Module):
         self.softmax = nn.Softmax(dim=2)
         self.gamma = nn.Parameter(torch.tensor(0.0))
 
-    def forward(self, x):
+    def forward(self, x, z):
+        print('-------------------------------------------------------------------------------------------------successfully')
+        # step 1: compute self attention feature map
         batch_size, channels, height, width = x.size()
         # assert channels == self.in_channels
         f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
@@ -537,8 +542,16 @@ class xml(nn.Module):
 
         self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
 
+        # step 2: add the noise plane if the layer is the innerest
+        if self.innermost:
+            z_plane = z.view(z.size(0), z.size(1), 1, 1).expand(z.size(0), z.size(1), x.size(2), x.size(3))
+            feature_map = self.down(x)
+            x_and_z_plane = torch.cat([feature_map, z_plane], 1)
+            out = self.up(x_and_z_plane)
+
+        # step 3: combine the attention and encoding results with noise layer
         # output = torch.cat([self.gamma * x, self.model(x)], 1)
-        output = torch.cat([self.gamma * self_attention_map, self.model(x)], 1)
+        output = torch.cat([self.gamma * self_attention_map, out], 1)
 
         # print(f.requires_grad)
         # print(g.requires_grad)
@@ -558,7 +571,7 @@ class UnetSkipConnectionBlock(nn.Module):
     """
 
     def __init__(self, outer_nc, inner_nc, input_nc=None,
-                 submodule=None, outermost=False, innermost=False, norm_layer=nn.BatchNorm2d, use_dropout=False, skip=True):
+                 submodule=None, outermost=False, innermost=False, norm_layer=nn.BatchNorm2d, use_dropout=False, skip=True, nz=0):
         """Construct a Unet submodule with skip connections.
 
         Parameters:
@@ -573,13 +586,16 @@ class UnetSkipConnectionBlock(nn.Module):
         """
         super(UnetSkipConnectionBlock, self).__init__()
         self.outermost = outermost
-        self.skip = skip
+        self.innermost = innermost
+        self.nz = nz
+
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
         if input_nc is None:
             input_nc = outer_nc
+
         downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=4,
                              stride=2, padding=1, bias=use_bias)
         downrelu = nn.LeakyReLU(0.2)
@@ -593,14 +609,22 @@ class UnetSkipConnectionBlock(nn.Module):
                                         padding=1)
             down = [downconv]
             up = [uprelu, upconv, nn.Tanh()]
-            model = down + [submodule] + up
+            # model = down + [submodule] + up
+            # self.model = nn.Sequential(*model)
         elif innermost:
-            upconv = nn.ConvTranspose2d(inner_nc, outer_nc,
+            upconv = nn.ConvTranspose2d(inner_nc + self.nz, outer_nc,
                                         kernel_size=4, stride=2,
                                         padding=1, bias=use_bias)
             down = [downrelu, downconv]
             up = [uprelu, upconv, upnorm]
-            model = down + up
+
+            # model = down + up
+
+            self.f = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
+            self.g = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
+            self.h = nn.Conv2d(in_channels=input_nc, out_channels=input_nc, kernel_size=1)
+            self.softmax = nn.Softmax(dim=2)
+            self.gamma = nn.Parameter(torch.tensor(1e-9))
         else:
             upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
                                         kernel_size=4, stride=2,
@@ -608,25 +632,67 @@ class UnetSkipConnectionBlock(nn.Module):
             down = [downrelu, downconv, downnorm]
             up = [uprelu, upconv, upnorm]
 
-            if use_dropout:
-                model = down + [submodule] + up + [nn.Dropout(0.5)]
-            else:
-                model = down + [submodule] + up
+            # if use_dropout:
+            #     model = down + [submodule] + up + [nn.Dropout(0.5)]
+            # else:
+            #     model = down + [submodule] + up
 
-        self.beta = nn.Parameter(torch.tensor(0.0))
+        # self.beta = nn.Parameter(torch.tensor(0.0))
 
-        self.model = nn.Sequential(*model)
+            # self.model = nn.Sequential(*model)
+
+        self.down = nn.Sequential(*down)
+        self.up = nn.Sequential(*up)
+        self.submodule = submodule
 
 
+    def forward(self, x, z):
+        if self.outermost:
+            x1 = self.down(x)
+            x2 = self.submodule(x1, z)
+            output = self.up(x2)
+            return output
+        if self.innermost:
+            # step 1: compute self attention feature map
+            batch_size, channels, height, width = x.size()
+            # assert channels == self.in_channels
+            f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
+            g = self.g(x).view(batch_size, -1, height * width)                       # B * C//8 * (H * W)
 
-    def forward(self, x):
-        with torch.autograd.set_detect_anomaly(True):
-            if self.outermost:
-                return self.model(x)
-            else:
-                # return torch.cat([self.beta * x, self.model(x)], 1)
-                # y = self.beta * x
-                return torch.cat([self.beta * x, self.model(x)], 1)
+            attention = torch.bmm(f, g)                                        # B * (H * W) * (H * W)
+            attention = self.softmax(attention)
+
+            h = self.h(x).view(batch_size, channels, -1)                       # B * C * (H * W)
+
+            self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
+
+            # step 2: add the noise plane if the layer is the innerest
+            feature_map = self.down(x)
+            z_plane = z.view(z.size(0), z.size(1), 1, 1).expand(z.size(0), z.size(1), feature_map.size(2), feature_map.size(3))
+
+            x_and_z_plane = torch.cat([feature_map, z_plane], 1)
+
+            out = self.up(x_and_z_plane)
+
+            print('gamma is {:0.9f}'.format(self.gamma))
+            # print(z_plane.shape)
+            # print(feature_map.shape)
+            # print(self_attention_map.shape)
+            # print(out.shape)
+
+            # step 3: combine the attention and encoding results with noise layer
+            # output = torch.cat([self.gamma * x, self.model(x)], 1)
+            output = torch.cat([self.gamma * self_attention_map, out], 1)
+
+            return output
+        else:
+            # return torch.cat([self.beta * x, self.model(x)], 1)
+            # y = self.beta * x
+            x1 = self.down(x)
+            x2 = self.submodule(x1, z)
+            x3 = self.up(x2)
+            output = torch.cat([x, x3], 1)
+            return output
 
 
 

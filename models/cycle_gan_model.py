@@ -71,9 +71,9 @@ class CycleGANModel(BaseModel):
         # The naming is different from those used in the paper.
         # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, nz=opt.noise_length)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, nz=opt.noise_length)
 
         # print('parameters are these:---------------------------------------------')
         # for name, param in self.netG_A.named_parameters():
@@ -121,12 +121,23 @@ class CycleGANModel(BaseModel):
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
+    def get_noise(self, batch_size, nz, random_type='uniform'):
+        if random_type == 'uniform':
+            z = torch.rand(batch_size, nz) * 0.2 - 0.1
+        elif random_type == 'gauss':
+            z = torch.randn(batch_size, nz) * 0.1
+        else:
+            NotImplementedError('Please check the function of generate noise')
+        return z.to(self.device)
+
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.fake_B = self.netG_A(self.real_A)  # G_A(A)
-        self.rec_A = self.netG_B(self.fake_B)   # G_B(G_A(A))
-        self.fake_A = self.netG_B(self.real_B)  # G_B(B)
-        self.rec_B = self.netG_A(self.fake_A)   # G_A(G_B(B))
+        z = self.get_noise(self.real_A.size(0), self.opt.noise_length)
+
+        self.fake_B = self.netG_A(self.real_A, z)  # G_A(A)
+        self.rec_A = self.netG_B(self.fake_B, z)   # G_B(G_A(A))
+        self.fake_A = self.netG_B(self.real_B, z)  # G_B(B)
+        self.rec_B = self.netG_A(self.fake_A, z)   # G_A(G_B(B))
         # print('-------------------------done')
 
     def backward_D_basic(self, netD, real, fake):
@@ -168,11 +179,12 @@ class CycleGANModel(BaseModel):
         lambda_B = self.opt.lambda_B
         # Identity loss
         if lambda_idt > 0:
+            z = self.get_noise(self.real_A.size(0), self.opt.noise_length)
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
-            self.idt_A = self.netG_A(self.real_B)
+            self.idt_A = self.netG_A(self.real_B, z)
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
-            self.idt_B = self.netG_B(self.real_A)
+            self.idt_B = self.netG_B(self.real_A, z)
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0

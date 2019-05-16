@@ -36,5 +36,7 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--lr_policy', type=str, default='linear', help='learning rate policy. [linear | step | plateau | cosine]')
         parser.add_argument('--lr_decay_iters', type=int, default=50, help='multiply by a gamma every lr_decay_iters iterations')
 
+        parser.add_argument('--noise_length', type=int, default=16, help='the length of noise vector')
+
         self.isTrain = True
         return parser
