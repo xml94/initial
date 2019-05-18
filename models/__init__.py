@@ -30,13 +30,16 @@ def find_model_using_name(model_name):
     and it is case-insensitive.
     """
     model_filename = "models." + model_name + "_model"
-    modellib = importlib.import_module(model_filename)
+    modellib = importlib.import_module(model_filename) # import according model from model library, such as pytorch-CycleGAN-and-pix2pix/models/cycle_gan_model.py
+    # print('modellib is {}'.format(modellib))
     model = None
     target_model_name = model_name.replace('_', '') + 'model'
+    # print('target_model_name is %s' % target_model_name)
     for name, cls in modellib.__dict__.items():
         if name.lower() == target_model_name.lower() \
            and issubclass(cls, BaseModel):
             model = cls
+            # print(model)
 
     if model is None:
         print("In %s.py, there should be a subclass of BaseModel with class name that matches %s in lowercase." % (model_filename, target_model_name))

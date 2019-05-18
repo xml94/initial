@@ -54,13 +54,36 @@ if __name__ == '__main__':
     if opt.eval:
         model.eval()
     for i, data in enumerate(dataset):
+
+        print('i is {:d}'.format(i))
+
         if i >= opt.num_test:  # only apply our model to opt.num_test images.
             break
         model.set_input(data)  # unpack data from data loader
-        model.test()           # run inference
-        visuals = model.get_current_visuals()  # get image results
-        img_path = model.get_image_paths()     # get image paths
+        # print('{:-^40}'.format('model is like this'))
+        # print(model)
+        # for idx, m in enumerate(model.named_modules()):
+        #     print(idx, '->', m)
+        real_A, fake_B, real_B = model.test()           # run inference
+        images = [real_A, real_B, fake_B]
+        names = ['real_A', 'real_B', 'fake_B']
+        # v = []
+        # visuals = model.get_current_visuals()  # get image results
+        # print(visuals)
+        # v.append(visuals)
+        # print(visuals)
+        for j in range(opt.num_random - 1):
+            real_A, fake_B, real_B = model.test()
+            images.append(fake_B)
+            names.append('fake_B_%d' % j)
+
+        # img_path = model.get_image_paths()     # get image paths
+
+        img_path = 'input_%3.3d' % i
+
         if i % 5 == 0:  # save images to an HTML file
             print('processing (%04d)-th image... %s' % (i, img_path))
-        save_images(webpage, visuals, img_path, aspect_ratio=opt.aspect_ratio, width=opt.display_winsize)
+        # save_images(webpage, images, names, img_path, aspect_ratio=opt.aspect_ratio, width=opt.display_winsize)
+
+        save_images(webpage, images, names, img_path, aspect_ratio=opt.aspect_ratio, width=opt.crop_size)
     webpage.save()  # save the HTML

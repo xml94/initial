@@ -132,13 +132,52 @@ class CycleGANModel(BaseModel):
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        z = self.get_noise(self.real_A.size(0), self.opt.noise_length)
 
-        self.fake_B = self.netG_A(self.real_A, z)  # G_A(A)
-        self.rec_A = self.netG_B(self.fake_B, z)   # G_B(G_A(A))
-        self.fake_A = self.netG_B(self.real_B, z)  # G_B(B)
-        self.rec_B = self.netG_A(self.fake_A, z)   # G_A(G_B(B))
-        # print('-------------------------done')
+        if self.isTrain:
+            z = self.get_noise(self.real_A.size(0), self.opt.noise_length)
+
+            self.fake_B = self.netG_A(self.real_A, z)  # G_A(A)
+            self.rec_A = self.netG_B(self.fake_B, z)   # G_B(G_A(A))
+            self.fake_A = self.netG_B(self.real_B, z)  # G_B(B)
+            self.rec_B = self.netG_A(self.fake_A, z)   # G_A(G_B(B))
+            # print('-------------------------done')
+
+        else: # generate more images for every single input image
+
+            z_0 = self.get_noise(self.real_A.size(0), self.opt.noise_length)
+            print('{:-^80}'.format('this is debug'))
+            print(z_0)
+
+
+            self.fake_B = self.netG_A(self.real_A, z_0)  # G_A(A)
+            self.rec_A = self.netG_B(self.fake_B, z_0)   # G_B(G_A(A))
+            self.fake_A = self.netG_B(self.real_B, z_0)  # G_B(B)
+            self.rec_B = self.netG_A(self.fake_A, z_0)   # G_A(G_B(B))
+
+            # z_1 = self.get_noise(self.real_A.size(0), self.opt.noise_length)
+            # z_2 = self.get_noise(self.real_A.size(0), self.opt.noise_length)
+            # z_3 = self.get_noise(self.real_A.size(0), self.opt.noise_length)
+            # z_4 = self.get_noise(self.real_A.size(0), self.opt.noise_length)
+            #
+            # self.fake_B_1 = self.netG_A(self.real_A, z_1)  # G_A(A)
+            # self.rec_A_1 = self.netG_B(self.fake_B_1, z_1)   # G_B(G_A(A))
+            # self.fake_A_1 = self.netG_B(self.real_B, z_1)  # G_B(B)
+            # self.rec_B_1 = self.netG_A(self.fake_A_1, z_1)   # G_A(G_B(B))
+            #
+            # self.fake_B_2 = self.netG_A(self.real_A, z_2)  # G_A(A)
+            # self.rec_A_2 = self.netG_B(self.fake_B_2, z_2)   # G_B(G_A(A))
+            # self.fake_A_2 = self.netG_B(self.real_B, z_2)  # G_B(B)
+            # self.rec_B_2 = self.netG_A(self.fake_A_2, z_2)   # G_A(G_B(B))
+            #
+            # self.fake_B_3 = self.netG_A(self.real_A, z_3)  # G_A(A)
+            # self.rec_A_3 = self.netG_B(self.fake_B_3, z_3)   # G_B(G_A(A))
+            # self.fake_A_3 = self.netG_B(self.real_B, z_3)  # G_B(B)
+            # self.rec_B_3 = self.netG_A(self.fake_A_3, z_3)   # G_A(G_B(B))
+            #
+            # self.fake_B_4 = self.netG_A(self.real_A, z_4)  # G_A(A)
+            # self.rec_A_4 = self.netG_B(self.fake_B_4, z_4)   # G_B(G_A(A))
+            # self.fake_A_4 = self.netG_B(self.real_B, z_4)  # G_B(B)
+            # self.rec_B_4 = self.netG_A(self.fake_A_4, z_4)   # G_A(G_B(B))
 
     def backward_D_basic(self, netD, real, fake):
         """Calculate GAN loss for the discriminator

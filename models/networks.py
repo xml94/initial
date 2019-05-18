@@ -154,6 +154,8 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, nz=nz)
+    # elif netG == 'atte_noise_256'
+    #     net =
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -654,17 +656,17 @@ class UnetSkipConnectionBlock(nn.Module):
             return output
         if self.innermost:
             # step 1: compute self attention feature map
-            batch_size, channels, height, width = x.size()
-            # assert channels == self.in_channels
-            f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
-            g = self.g(x).view(batch_size, -1, height * width)                       # B * C//8 * (H * W)
-
-            attention = torch.bmm(f, g)                                        # B * (H * W) * (H * W)
-            attention = self.softmax(attention)
-
-            h = self.h(x).view(batch_size, channels, -1)                       # B * C * (H * W)
-
-            self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
+            # batch_size, channels, height, width = x.size()
+            # # assert channels == self.in_channels
+            # f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
+            # g = self.g(x).view(batch_size, -1, height * width)                       # B * C//8 * (H * W)
+            #
+            # attention = torch.bmm(f, g)                                        # B * (H * W) * (H * W)
+            # attention = self.softmax(attention)
+            #
+            # h = self.h(x).view(batch_size, channels, -1)                       # B * C * (H * W)
+            #
+            # self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
 
             # step 2: add the noise plane if the layer is the innerest
             feature_map = self.down(x)
@@ -674,7 +676,7 @@ class UnetSkipConnectionBlock(nn.Module):
 
             out = self.up(x_and_z_plane)
 
-            print('gamma is {:0.9f}'.format(self.gamma))
+            # print('gamma is {:0.9f}'.format(self.gamma))
             # print(z_plane.shape)
             # print(feature_map.shape)
             # print(self_attention_map.shape)
@@ -682,7 +684,9 @@ class UnetSkipConnectionBlock(nn.Module):
 
             # step 3: combine the attention and encoding results with noise layer
             # output = torch.cat([self.gamma * x, self.model(x)], 1)
-            output = torch.cat([self.gamma * self_attention_map, out], 1)
+
+            # output = torch.cat([self.gamma * self_attention_map, out], 1)
+            output = torch.cat([x, out], 1)
 
             return output
         else:

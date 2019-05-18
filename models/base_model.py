@@ -103,7 +103,8 @@ class BaseModel(ABC):
         """
         with torch.no_grad():
             self.forward()
-            self.compute_visuals()
+            return self.real_A, self.fake_B, self.real_B
+            # self.compute_visuals()
 
     def compute_visuals(self):
         """Calculate additional output images for visdom and HTML visualization"""
@@ -204,9 +205,12 @@ class BaseModel(ABC):
             verbose (bool) -- if verbose: print the network architecture
         """
         print('---------- Networks initialized -------------')
+        # print(self.model_names)
         for name in self.model_names:
             if isinstance(name, str):
                 net = getattr(self, 'net' + name)
+                # for name, param in net.named_parameters():
+                #     print(name)
                 num_params = 0
                 for param in net.parameters():
                     num_params += param.numel()

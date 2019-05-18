@@ -20,5 +20,7 @@ class TestOptions(BaseOptions):
         parser.set_defaults(model='test')
         # To avoid cropping, the load_size should be the same as crop_size
         parser.set_defaults(load_size=parser.get_default('crop_size'))
+
+        parser.add_argument('--num_random', type=int, default=3, help='how many generated images return for every input')
         self.isTrain = False
         return parser
