@@ -123,7 +123,7 @@ class CycleGANModel(BaseModel):
 
     def get_noise(self, batch_size, nz, random_type='uniform'):
         if random_type == 'uniform':
-            z = torch.rand(batch_size, nz) * 0.2 - 0.1
+            z = torch.rand(batch_size, nz) * 2 - 1.0
         elif random_type == 'gauss':
             z = torch.randn(batch_size, nz) * 0.1
         else:
@@ -145,8 +145,8 @@ class CycleGANModel(BaseModel):
         else: # generate more images for every single input image
 
             z_0 = self.get_noise(self.real_A.size(0), self.opt.noise_length)
-            print('{:-^80}'.format('this is debug'))
-            print(z_0)
+            # print('{:-^80}'.format('this is debug'))
+            # print(z_0)
 
 
             self.fake_B = self.netG_A(self.real_A, z_0)  # G_A(A)

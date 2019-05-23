@@ -457,15 +457,15 @@ class UnetGenerator(nn.Module):
         unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer, nz=nz,
                                              innermost=True, skip=False)  # add the innermost layer
         for i in range(num_downs - 5): # add intermediate layers with ngf * 8 filters
-            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, nz=0,
+            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, nz=nz,
                                                  norm_layer=norm_layer, use_dropout=use_dropout, skip=False)
         # gradually reduce the number of filters from ngf * 8 to ngf
-        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, skip=False, nz=0,)
-        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer, nz=0,
+        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, skip=False, nz=nz,)
+        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer, nz=nz,
                                              skip=False)
-        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer, nz=0,
+        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer, nz=nz,
                                              skip=False)
-        self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, nz=0,
+        self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, nz=nz,
                                              norm_layer=norm_layer, skip=False)  # add the outermost layer
 
     def forward(self, input, z):
@@ -628,9 +628,11 @@ class UnetSkipConnectionBlock(nn.Module):
             self.softmax = nn.Softmax(dim=2)
             self.gamma = nn.Parameter(torch.tensor(1e-9))
         else:
-            upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
+            upconv = nn.ConvTranspose2d(inner_nc + self.nz, outer_nc,
                                         kernel_size=4, stride=2,
                                         padding=1, bias=use_bias)
+            # downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=4,
+                             # stride=2, padding=1, bias=use_bias)
             down = [downrelu, downconv, downnorm]
             up = [uprelu, upconv, upnorm]
 
@@ -654,7 +656,9 @@ class UnetSkipConnectionBlock(nn.Module):
             x2 = self.submodule(x1, z)
             output = self.up(x2)
             return output
-        if self.innermost:
+        # if self.innermost:
+        else:
+            # print(self.nz)
             # step 1: compute self attention feature map
             # batch_size, channels, height, width = x.size()
             # # assert channels == self.in_channels
@@ -674,7 +678,13 @@ class UnetSkipConnectionBlock(nn.Module):
 
             x_and_z_plane = torch.cat([feature_map, z_plane], 1)
 
+            # print('this is a debug {}'.format(x_and_z_plane))
+            # # print(feature_map)
+            # print(x_and_z_plane)
+            # print(x_and_z_plane.shape)
+
             out = self.up(x_and_z_plane)
+
 
             # print('gamma is {:0.9f}'.format(self.gamma))
             # print(z_plane.shape)
@@ -689,14 +699,14 @@ class UnetSkipConnectionBlock(nn.Module):
             output = torch.cat([x, out], 1)
 
             return output
-        else:
-            # return torch.cat([self.beta * x, self.model(x)], 1)
-            # y = self.beta * x
-            x1 = self.down(x)
-            x2 = self.submodule(x1, z)
-            x3 = self.up(x2)
-            output = torch.cat([x, x3], 1)
-            return output
+        # else:
+        #     # return torch.cat([self.beta * x, self.model(x)], 1)
+        #     # y = self.beta * x
+        #     x1 = self.down(x)
+        #     x2 = self.submodule(x1, z)
+        #     x3 = self.up(x2)
+        #     output = torch.cat([x, x3], 1)
+        #     return output
 
 
 
