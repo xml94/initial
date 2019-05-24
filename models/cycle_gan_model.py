@@ -121,11 +121,12 @@ class CycleGANModel(BaseModel):
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
-    def get_noise(self, batch_size, nz, random_type='uniform'):
+    def get_noise(self, batch_size, nz, random_type='gauss'):
         if random_type == 'uniform':
             z = torch.rand(batch_size, nz) * 2 - 1.0
         elif random_type == 'gauss':
             z = torch.randn(batch_size, nz) * 0.1
+            z = torch.zeros(batch_size, nz)
         else:
             NotImplementedError('Please check the function of generate noise')
         return z.to(self.device)
@@ -134,7 +135,7 @@ class CycleGANModel(BaseModel):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
 
         if self.isTrain:
-            z = self.get_noise(self.real_A.size(0), self.opt.noise_length)
+            z = self.get_noise(self.real_A.size(0), self.opt.noise_length, random_type=self.opt.random_type)
 
             self.fake_B = self.netG_A(self.real_A, z)  # G_A(A)
             self.rec_A = self.netG_B(self.fake_B, z)   # G_B(G_A(A))

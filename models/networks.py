@@ -628,7 +628,7 @@ class UnetSkipConnectionBlock(nn.Module):
             self.softmax = nn.Softmax(dim=2)
             self.gamma = nn.Parameter(torch.tensor(1e-9))
         else:
-            upconv = nn.ConvTranspose2d(inner_nc + self.nz, outer_nc,
+            upconv = nn.ConvTranspose2d(inner_nc * 2 + self.nz, outer_nc,
                                         kernel_size=4, stride=2,
                                         padding=1, bias=use_bias)
             # downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=4,
@@ -655,6 +655,11 @@ class UnetSkipConnectionBlock(nn.Module):
             x1 = self.down(x)
             x2 = self.submodule(x1, z)
             output = self.up(x2)
+
+            # print('')
+            # print('this is outermost')
+            # print(x.shape)
+            # print(output.shape)
             return output
         # if self.innermost:
         else:
@@ -673,14 +678,25 @@ class UnetSkipConnectionBlock(nn.Module):
             # self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
 
             # step 2: add the noise plane if the layer is the innerest
-            feature_map = self.down(x)
+            x1 = self.down(x)
+            if self.submodule is None:
+                feature_map = x1
+                # print('')
+                # print('this is innerest')
+            else:
+                # print('')
+                # print('this is outside')
+                feature_map = self.submodule(x1, z)
+
             z_plane = z.view(z.size(0), z.size(1), 1, 1).expand(z.size(0), z.size(1), feature_map.size(2), feature_map.size(3))
 
             x_and_z_plane = torch.cat([feature_map, z_plane], 1)
 
             # print('this is a debug {}'.format(x_and_z_plane))
-            # # print(feature_map)
-            # print(x_and_z_plane)
+
+            # print(x.shape)
+            # print(feature_map.shape)
+            # # print(x_and_z_plane)
             # print(x_and_z_plane.shape)
 
             out = self.up(x_and_z_plane)
@@ -697,6 +713,7 @@ class UnetSkipConnectionBlock(nn.Module):
 
             # output = torch.cat([self.gamma * self_attention_map, out], 1)
             output = torch.cat([x, out], 1)
+            # print('output\'s size is %d %d %d %d' % (output.shape[0], output.shape[1], output.shape[2], output.shape[3]))
 
             return output
         # else:

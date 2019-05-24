@@ -72,10 +72,11 @@ if __name__ == '__main__':
         # print(visuals)
         # v.append(visuals)
         # print(visuals)
-        for j in range(opt.num_random - 1):
-            real_A, fake_B, real_B = model.test()
-            images.append(fake_B)
-            names.append('fake_B_%d' % j)
+
+        # for j in range(opt.num_random - 1):
+        #     real_A, fake_B_, real_B = model.test()
+        #     images.append(fake_B_)
+        #     names.append('fake_B_%d' % j)
 
         # img_path = model.get_image_paths()     # get image paths
 
