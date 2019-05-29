@@ -607,23 +607,35 @@ class UnetSkipConnectionBlock(nn.Module):
         upnorm = norm_layer(outer_nc)
 
         if outermost:
-            upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1)
-            downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=4,
-                             stride=2, padding=1, bias=use_bias)
+            # upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
+            #                             kernel_size=4, stride=2,
+            #                             padding=1)
+            up = nn.Upsample(scale_factor=2, mode='bilinear')
+            uppad = nn.ReflectionPad2d(1)
+            upconv = nn.Conv2d(inner_nc * 2, outer_nc, kernel_size=3, stride=1, padding=0)
+
+            downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=4,stride=2, padding=1, bias=use_bias)
+
             down = [downconv]
-            up = [uprelu, upconv, nn.Tanh()]
+            up = [uprelu, up, uppad, upconv, nn.Tanh()]
             # model = down + [submodule] + up
             # self.model = nn.Sequential(*model)
         elif innermost:
-            upconv = nn.ConvTranspose2d(inner_nc, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1, bias=use_bias)
+            # upconv = nn.ConvTranspose2d(inner_nc, outer_nc,
+            #                             kernel_size=4, stride=2,
+            #                             padding=1, bias=use_bias)
+            # upconv = [nn.Upsample(scale_factor=2, mode='bilinear'),
+            #           nn.ReflectionPad2d(1),
+            #           nn.Conv2d(inner_nc, outer_nc, kernel_size=3, stride=1, padding=0)]
+
+            up = nn.Upsample(scale_factor=2, mode='bilinear')
+            uppad = nn.ReflectionPad2d(1)
+            upconv = nn.Conv2d(inner_nc, outer_nc, kernel_size=3, stride=1, padding=0)
+
             downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=4,
                              stride=2, padding=1, bias=use_bias)
             down = [downrelu, downconv]
-            up = [uprelu, upconv, upnorm]
+            up = [uprelu, up, uppad, upconv, upnorm]
 
             # model = down + up
 
@@ -633,13 +645,23 @@ class UnetSkipConnectionBlock(nn.Module):
             # self.softmax = nn.Softmax(dim=2)
             # self.gamma = nn.Parameter(torch.tensor(1e-9))
         else:
-            upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1, bias=use_bias)
+            # upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
+            #                             kernel_size=4, stride=2,
+            #                             padding=1, bias=use_bias)
+
+            # upconv = [nn.Upsample(scale_factor=2, mode='bilinear'),
+            #           nn.ReflectionPad2d(1),
+            #           nn.Conv2d(inner_nc * 2, outer_nc, kernel_size=3, stride=1, padding=0)]
+
+            up = nn.Upsample(scale_factor=2, mode='bilinear')
+            uppad = nn.ReflectionPad2d(1)
+            upconv = nn.Conv2d(inner_nc * 2, outer_nc, kernel_size=3, stride=1, padding=0)
+
+
             downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=4,
                              stride=2, padding=1, bias=use_bias)
             down = [downrelu, downconv, downnorm]
-            up = [uprelu, upconv, upnorm]
+            up = [uprelu, up, uppad, upconv, upnorm]
 
 
         self.down = nn.Sequential(*down)
@@ -921,11 +943,16 @@ class NLayerDiscriminator(nn.Module):
         ]
 
         sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
+
+        sequence += [nn.AdaptiveAvgPool2d(1)]
         self.model = nn.Sequential(*sequence)
 
     def forward(self, input):
         """Standard forward."""
-        return self.model(input)
+        output = self.model(input)
+        # print('this is D')
+        # print(output.shape)
+        return output
 
 
 class PixelDiscriminator(nn.Module):
