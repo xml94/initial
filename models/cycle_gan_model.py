@@ -121,11 +121,12 @@ class CycleGANModel(BaseModel):
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
-    def get_noise(self, batch_size, nz, random_type='gauss'):
+    def get_noise(self, batch_size, nz, random_type='uniform'):
         if random_type == 'uniform':
             z = torch.rand(batch_size, nz) * 2 - 1.0
         elif random_type == 'gauss':
             z = torch.randn(batch_size, nz) * 0.1
+            # z = torch.ones(batch_size, nz)
             z = torch.zeros(batch_size, nz)
         else:
             NotImplementedError('Please check the function of generate noise')
