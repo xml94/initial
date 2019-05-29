@@ -136,19 +136,31 @@ class CycleGANModel(BaseModel):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
 
         if self.isTrain:
-            z = self.get_noise(self.real_A.size(0), self.opt.noise_length, random_type=self.opt.random_type)
 
+            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
+            # print('this is new epoch')
+            # print(z.shape)
             self.fake_B = self.netG_A(self.real_A, z)  # G_A(A)
+            # print('-------------------------1  done----------------------------')
+
+            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
             self.rec_A = self.netG_B(self.fake_B, z)   # G_B(G_A(A))
+            # print('-------------------------2  done----------------------------')
+
+            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
             self.fake_A = self.netG_B(self.real_B, z)  # G_B(B)
+            # print('-------------------------3  done----------------------------')
+
+            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
             self.rec_B = self.netG_A(self.fake_A, z)   # G_A(G_B(B))
-            # print('-------------------------done')
+
+            # print('-------------------------4  done----------------------------')
 
         else: # generate more images for every single input image
 
-            z_0 = self.get_noise(self.real_A.size(0), self.opt.noise_length)
+            z_0 = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number)
             # print('{:-^80}'.format('this is debug'))
-            # print(z_0)
+            # print(z_0.shape)
 
 
             self.fake_B = self.netG_A(self.real_A, z_0)  # G_A(A)
@@ -220,11 +232,13 @@ class CycleGANModel(BaseModel):
         lambda_B = self.opt.lambda_B
         # Identity loss
         if lambda_idt > 0:
-            z = self.get_noise(self.real_A.size(0), self.opt.noise_length)
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
+            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number)
             self.idt_A = self.netG_A(self.real_B, z)
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
+
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
+            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number)
             self.idt_B = self.netG_B(self.real_A, z)
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:

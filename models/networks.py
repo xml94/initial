@@ -472,99 +472,99 @@ class UnetGenerator(nn.Module):
         """Standard forward"""
         return self.model(input, z)
 
-class xml(nn.Module):
-    def __init__(self, outer_nc, inner_nc, input_nc=None,submodule=None, outermost=False,
-                 innermost=True, norm_layer=nn.BatchNorm2d, use_dropout=False, skip=True):
-        super().__init__()
-        self.outermost = outermost
-        self.innermost = innermost
-        self.skip = skip
-        if type(norm_layer) == functools.partial:
-            use_bias = norm_layer.func == nn.InstanceNorm2d
-        else:
-            use_bias = norm_layer == nn.InstanceNorm2d
-        if input_nc is None:
-            input_nc = outer_nc
-        downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=4,
-                             stride=2, padding=1, bias=use_bias)
-        downrelu = nn.LeakyReLU(0.2)
-        downnorm = norm_layer(inner_nc)
-        uprelu = nn.ReLU()
-        upnorm = norm_layer(outer_nc)
-
-        if outermost:
-            upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1)
-            down = [downconv]
-            up = [uprelu, upconv, nn.Tanh()]
-            model = down + [submodule] + up
-        elif innermost:
-            upconv = nn.ConvTranspose2d(inner_nc + 4, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1, bias=use_bias)
-            down = [downrelu, downconv]
-            up = [uprelu, upconv, upnorm]
-            self.down = down
-            self.up = up
-            model = down + up
-        else:
-            upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
-                                        kernel_size=4, stride=2,
-                                        padding=1, bias=use_bias)
-            down = [downrelu, downconv, downnorm]
-            up = [uprelu, upconv, upnorm]
-
-            if use_dropout:
-                model = down + [submodule] + up + [nn.Dropout(0.5)]
-            else:
-                model = down + [submodule] + up
-
-        self.model = nn.Sequential(*model)
-
-
-        self.f = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
-        self.g = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
-        self.h = nn.Conv2d(in_channels=input_nc, out_channels=input_nc, kernel_size=1)
-        self.softmax = nn.Softmax(dim=2)
-        self.gamma = nn.Parameter(torch.tensor(0.0))
-
-    def forward(self, x, z):
-        print('-------------------------------------------------------------------------------------------------successfully')
-        # step 1: compute self attention feature map
-        batch_size, channels, height, width = x.size()
-        # assert channels == self.in_channels
-        f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
-        g = self.g(x).view(batch_size, -1, height * width)                       # B * C//8 * (H * W)
-
-        attention = torch.bmm(f, g)                                        # B * (H * W) * (H * W)
-        attention = self.softmax(attention)
-
-        h = self.h(x).view(batch_size, channels, -1)                       # B * C * (H * W)
-
-        self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
-
-        # step 2: add the noise plane if the layer is the innerest
-        if self.innermost:
-            z_plane = z.view(z.size(0), z.size(1), 1, 1).expand(z.size(0), z.size(1), x.size(2), x.size(3))
-            feature_map = self.down(x)
-            x_and_z_plane = torch.cat([feature_map, z_plane], 1)
-            out = self.up(x_and_z_plane)
-
-        # step 3: combine the attention and encoding results with noise layer
-        # output = torch.cat([self.gamma * x, self.model(x)], 1)
-        output = torch.cat([self.gamma * self_attention_map, out], 1)
-
-        # print(f.requires_grad)
-        # print(g.requires_grad)
-        # print(h.requires_grad)
-        # print(attention_map.requires_grad)
-        # print(output.requires_grad)
-
-        # print('input shape is {}'.format(x.shape))
-        # print('ouptut shape is {}'.format(output.shape))
-
-        return output
+# class xml(nn.Module):
+#     def __init__(self, outer_nc, inner_nc, input_nc=None,submodule=None, outermost=False,
+#                  innermost=True, norm_layer=nn.BatchNorm2d, use_dropout=False, skip=True):
+#         super().__init__()
+#         self.outermost = outermost
+#         self.innermost = innermost
+#         self.skip = skip
+#         if type(norm_layer) == functools.partial:
+#             use_bias = norm_layer.func == nn.InstanceNorm2d
+#         else:
+#             use_bias = norm_layer == nn.InstanceNorm2d
+#         if input_nc is None:
+#             input_nc = outer_nc
+#         downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=4,
+#                              stride=2, padding=1, bias=use_bias)
+#         downrelu = nn.LeakyReLU(0.2)
+#         downnorm = norm_layer(inner_nc)
+#         uprelu = nn.ReLU()
+#         upnorm = norm_layer(outer_nc)
+#
+#         if outermost:
+#             upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
+#                                         kernel_size=4, stride=2,
+#                                         padding=1)
+#             down = [downconv]
+#             up = [uprelu, upconv, nn.Tanh()]
+#             model = down + [submodule] + up
+#         elif innermost:
+#             upconv = nn.ConvTranspose2d(inner_nc + 4, outer_nc,
+#                                         kernel_size=4, stride=2,
+#                                         padding=1, bias=use_bias)
+#             down = [downrelu, downconv]
+#             up = [uprelu, upconv, upnorm]
+#             self.down = down
+#             self.up = up
+#             model = down + up
+#         else:
+#             upconv = nn.ConvTranspose2d(inner_nc * 2, outer_nc,
+#                                         kernel_size=4, stride=2,
+#                                         padding=1, bias=use_bias)
+#             down = [downrelu, downconv, downnorm]
+#             up = [uprelu, upconv, upnorm]
+#
+#             if use_dropout:
+#                 model = down + [submodule] + up + [nn.Dropout(0.5)]
+#             else:
+#                 model = down + [submodule] + up
+#
+#         self.model = nn.Sequential(*model)
+#
+#
+#         self.f = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
+#         self.g = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
+#         self.h = nn.Conv2d(in_channels=input_nc, out_channels=input_nc, kernel_size=1)
+#         self.softmax = nn.Softmax(dim=2)
+#         self.gamma = nn.Parameter(torch.tensor(0.0))
+#
+#     def forward(self, x, z):
+#         print('-------------------------------------------------------------------------------------------------successfully')
+#         # step 1: compute self attention feature map
+#         batch_size, channels, height, width = x.size()
+#         # assert channels == self.in_channels
+#         f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
+#         g = self.g(x).view(batch_size, -1, height * width)                       # B * C//8 * (H * W)
+#
+#         attention = torch.bmm(f, g)                                        # B * (H * W) * (H * W)
+#         attention = self.softmax(attention)
+#
+#         h = self.h(x).view(batch_size, channels, -1)                       # B * C * (H * W)
+#
+#         self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
+#
+#         # step 2: add the noise plane if the layer is the innerest
+#         if self.innermost:
+#             z_plane = z.view(z.size(0), z.size(1), 1, 1).expand(z.size(0), z.size(1), x.size(2), x.size(3))
+#             feature_map = self.down(x)
+#             x_and_z_plane = torch.cat([feature_map, z_plane], 1)
+#             out = self.up(x_and_z_plane)
+#
+#         # step 3: combine the attention and encoding results with noise layer
+#         # output = torch.cat([self.gamma * x, self.model(x)], 1)
+#         output = torch.cat([self.gamma * self_attention_map, out], 1)
+#
+#         # print(f.requires_grad)
+#         # print(g.requires_grad)
+#         # print(h.requires_grad)
+#         # print(attention_map.requires_grad)
+#         # print(output.requires_grad)
+#
+#         # print('input shape is {}'.format(x.shape))
+#         # print('ouptut shape is {}'.format(output.shape))
+#
+#         return output
 
 
 class UnetSkipConnectionBlock(nn.Module):
@@ -651,13 +651,16 @@ class UnetSkipConnectionBlock(nn.Module):
         if self.outermost:
             # print('this is outermost')
             # print(x.shape)
+            # print('This is a new beginning')
 
             x1 = self.down(x)
             x2 = self.submodule(x1, z)
             output = self.up(x2)
 
-            # print('')
-
+            # print('after up')
+            # print(z.shape)
+            #
+            # print('this is a end of one iteration')
             # print(output.shape)
             return output
         # if self.innermost:
@@ -679,8 +682,11 @@ class UnetSkipConnectionBlock(nn.Module):
             # step 2: add the noise plane if the layer is the innerest
 
             # print('not outest')
+            # print(z.shape)
+            z_layer = z[:, 0:self.nz]
+            z = z[:, self.nz:]
 
-            noise = z.view(z.size(0), z.size(1), 1, 1).expand(z.size(0), z.size(1), x.size(2), x.size(3))
+            noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x.size(2), x.size(3))
             x_and_noise = torch.cat([x, noise], 1)
             # print('x0 size is')
             # print(x_and_noise.shape)

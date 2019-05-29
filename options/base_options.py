@@ -56,6 +56,7 @@ class BaseOptions():
         parser.add_argument('--suffix', default='', type=str, help='customized suffix: opt.name = opt.name + suffix: e.g., {model}_{netG}_size{load_size}')
 
         parser.add_argument('--noise_length', type=int, default=16, help='the length of noise vector')
+        parser.add_argument('--noise_number', type=int, default=7, help='the number of every noise in every layer')
         parser.add_argument('--random_type', type=str, default='gauss', help='the type of random noise') # uniform, gauss
 
         self.initialized = True
