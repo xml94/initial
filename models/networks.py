@@ -459,10 +459,10 @@ class UnetGenerator(nn.Module):
         super(UnetGenerator, self).__init__()
         # construct unet structure
         unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm=norm, nz=nz,
-                                             innermost=True, skip=False)  # add the innermost layer
+                                             innermost=True, skip=False, downsize=False)  # add the innermost layer
         for i in range(num_downs - 5): # add intermediate layers with ngf * 8 filters
             unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, nz=nz,
-                                                 norm=norm, use_dropout=use_dropout, skip=False, downsize=False)
+                                                 norm=norm, use_dropout=use_dropout, skip=False, downsize=True)
         # gradually reduce the number of filters from ngf * 8 to ngf
         unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm=norm, skip=False, nz=nz,)
         unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm=norm, nz=nz, skip=False)
@@ -639,7 +639,7 @@ class UnetSkipConnectionBlock(nn.Module):
             # print('this is the middle')
             # print(norm)
             if downsize:
-                # downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
+                downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
                 if norm == 'spectral':
                     print('this use spectral normaltization')
                     downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias))
@@ -652,7 +652,7 @@ class UnetSkipConnectionBlock(nn.Module):
 
                 up = nn.Upsample(scale_factor=2, mode='bilinear')
                 uppad = nn.ReflectionPad2d(1)
-                # upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
+                upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
                 if norm == 'spectral':
                     print('this use spectral normaltization')
                     upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
@@ -695,8 +695,8 @@ class UnetSkipConnectionBlock(nn.Module):
             # print('This is a new beginning')
 
             x1 = self.down(x)
-            print('----------------------------------')
-            print(x1.shape)
+            # print('----------------------------------')
+            # print(x1.shape)
 
             x2 = self.submodule(x1, z)
             output = self.up(x2)
@@ -733,13 +733,13 @@ class UnetSkipConnectionBlock(nn.Module):
             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x.size(2), x.size(3))
             x_and_noise = torch.cat([x, noise], 1)
 
-            print('x0 size is')
-            print(x_and_noise.shape)
-            print('this is down')
+            # print('x0 size is')
+            # print(x_and_noise.shape)
+            # print('this is down')
 
             x1 = self.down(x_and_noise)
-            print('x1 size is ')
-            print(x1.shape)
+            # print('x1 size is ')
+            # print(x1.shape)
 
             # print('this is submodule')
             # print(z.shape)
@@ -758,7 +758,7 @@ class UnetSkipConnectionBlock(nn.Module):
 
             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x2.size(2), x2.size(3))
             x_and_noise = torch.cat([x2, noise], 1)
-            print('This is up sampling')
+            # print('This is up sampling')
             out = self.up(x_and_noise)
 
             output = torch.cat([x, out], 1)
