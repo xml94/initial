@@ -80,6 +80,11 @@ def get_params(opt, size):
 
 def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, convert=True):
     transform_list = []
+
+    # if opt.isTrain and opt.random_rotation and opt.rotation_range:
+    #     print(opt.model)
+    #     transform_list += [transforms.RandomRotation(opt.rotation_range, resample=Image.NEAREST)]
+
     if grayscale:
         transform_list.append(transforms.Grayscale(1))
     if 'resize' in opt.preprocess:
@@ -102,6 +107,9 @@ def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, conve
             transform_list.append(transforms.RandomHorizontalFlip())
         elif params['flip']:
             transform_list.append(transforms.Lambda(lambda img: __flip(img, params['flip'])))
+
+
+
 
     if convert:
         transform_list += [transforms.ToTensor()]
