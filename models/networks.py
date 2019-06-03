@@ -462,7 +462,7 @@ class UnetGenerator(nn.Module):
                                              innermost=True, skip=False)  # add the innermost layer
         for i in range(num_downs - 5): # add intermediate layers with ngf * 8 filters
             unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, nz=nz,
-                                                 norm=norm, use_dropout=use_dropout, skip=False, downsize=True)
+                                                 norm=norm, use_dropout=use_dropout, skip=True, downsize=True)
         # gradually reduce the number of filters from ngf * 8 to ngf
         unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm=norm, skip=False, nz=nz,)
         unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm=norm, nz=nz, skip=False)
@@ -473,6 +473,225 @@ class UnetGenerator(nn.Module):
     def forward(self, input, z):
         """Standard forward"""
         return self.model(input, z)
+
+
+
+class UnetSkipConnectionBlock(nn.Module):
+    """Defines the Unet submodule with skip connection.
+        X -------------------identity----------------------
+        |-- downsampling -- |submodule| -- upsampling --|
+    """
+
+    def __init__(self, outer_nc, inner_nc, input_nc=None,
+                 submodule=None, outermost=False, innermost=False, norm='batch', use_dropout=False, skip=False, nz=0, downsize=True):
+        """Construct a Unet submodule with skip connections.
+
+        Parameters:
+            outer_nc (int) -- the number of filters in the outer conv layer
+            inner_nc (int) -- the number of filters in the inner conv layer
+            input_nc (int) -- the number of channels in input images/features
+            submodule (UnetSkipConnectionBlock) -- previously defined submodules
+            outermost (bool)    -- if this module is the outermost module
+            innermost (bool)    -- if this module is the innermost module
+            norm_layer          -- normalization layer
+            user_dropout (bool) -- if use dropout layers.
+        """
+        super(UnetSkipConnectionBlock, self).__init__()
+        self.outermost = outermost
+        self.innermost = innermost
+        self.nz = nz
+        self.skip = skip
+
+        norm_layer = get_norm_layer(norm_type=norm)
+
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+        if input_nc is None:
+            input_nc = outer_nc
+
+        # downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=4,
+        #                      stride=2, padding=1, bias=use_bias)
+        downrelu = nn.LeakyReLU(0.2)
+        # downnorm = norm_layer(inner_nc + self.nz)
+        uprelu = nn.ReLU()
+        # upnorm = norm_layer(outer_nc)
+
+        if outermost:
+            downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
+            down = [downconv]
+
+            up = nn.Upsample(scale_factor=2, mode='bilinear')
+            uppad = nn.ReflectionPad2d(1)
+            upconv = nn.Conv2d(inner_nc, outer_nc, kernel_size=3, stride=1, padding=0)
+            up = [uprelu, up, uppad, upconv, nn.Tanh()]
+        elif innermost:
+            self.gamma = nn.Parameter(torch.tensor(1e-9))
+
+            downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
+            down = [downrelu, downconv]
+
+            up_sample = nn.Upsample(scale_factor=2, mode='bilinear')
+            uppad = nn.ReflectionPad2d(1)
+            upconv = nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
+            if norm == 'spectral':
+                # print('this is the innerest')
+                upnorm = norm_layer(nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
+                up = [uprelu, up_sample, uppad, upnorm]
+                # print(upnorm)
+            else:
+                # print('Don\'t use spectral normalization' )
+                upnorm = norm_layer(outer_nc)
+                up = [uprelu, up_sample, uppad, upconv, upnorm]
+
+            # model = down + up
+        else:
+            # print('this is the middle')
+            # print(norm)
+
+            self.gamma = nn.Parameter(torch.tensor(1e-9))
+
+            if skip:
+                self.f = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
+                self.g = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
+                self.h = nn.Conv2d(in_channels=input_nc, out_channels=input_nc, kernel_size=1)
+                self.softmax = nn.Softmax(dim=2)
+
+
+            if downsize:
+                if norm == 'spectral':
+                    # print('this use spectral normaltization')
+                    downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias))
+                    down = [downrelu, downnorm]
+                else:
+                    # print('Don\'t use spectral normalization' )
+                    downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
+                    downnorm = norm_layer(inner_nc)
+                    down = [downrelu, downconv, downnorm]
+
+
+                up_sampling = nn.Upsample(scale_factor=2, mode='bilinear')
+                uppad = nn.ReflectionPad2d(1)
+                if norm == 'spectral':
+                    # print('this use spectral normaltization')
+                    upnorm = norm_layer(nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
+                    up = [uprelu, up_sampling, uppad, upnorm]
+                else:
+                    # print('Don\'t use spectral normalization' )
+                    upconv = nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
+                    upnorm = norm_layer(outer_nc)
+                    up = [uprelu, up_sampling, uppad, upconv, upnorm]
+            else:
+                if norm == 'spectral':
+                    # print('this use spectral normaltization')
+                    # print('this use spectral normaltization')
+                    downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias))
+                    down = [downrelu, downnorm]
+                else:
+                    # print('Don\'t use spectral normalization' )
+                    downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias)
+                    downnorm = norm_layer(inner_nc)
+                    down = [downrelu, downconv, downnorm]
+
+                if norm == 'spectral':
+                    upnorm = norm_layer(nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=1))
+                    up = [uprelu, upnorm]
+                else:
+                    # print('Don\'t use spectral normalization' )
+                    upconv = nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=1)
+                    upnorm = norm_layer(outer_nc)
+                    up = [uprelu, upconv, upnorm]
+
+
+        self.down = nn.Sequential(*down)
+        self.up = nn.Sequential(*up)
+        self.submodule = submodule
+
+
+    def forward(self, x, z):
+        if self.outermost:
+            # print('this is outermost')
+            # print(x.shape)
+            # print('This is a new beginning')
+
+            x1 = self.down(x)
+            # print('----------------------------------')
+            # print(x1.shape)
+
+            x2 = self.submodule(x1, z)
+            output = self.up(x2)
+
+            # print('after up')
+            # print(z.shape)
+            #
+            # print('this is a end of one iteration')
+            # print(output.shape)
+            return output
+        # if self.innermost:
+        else:
+            # print(self.nz)
+            # step 1: compute self attention feature map
+
+
+            # step 2: add the noise plane if the layer is the innerest
+
+            # print('not outest')
+            # print(z.shape)
+            z_layer = z[:, 0:self.nz]
+            z = z[:, self.nz:]
+
+            noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x.size(2), x.size(3))
+            x_and_noise = torch.cat([x, noise], 1)
+
+            # print('x0 size is')
+            # print(x_and_noise.shape)
+            # print('this is down')
+
+            x1 = self.down(x_and_noise)
+            # print('x1 size is ')
+            # print(x1.shape)
+
+            # print('this is submodule')
+            # print(z.shape)
+            if self.submodule is not None:
+                x2 = self.submodule(x1, z)
+            else:
+                x2 = x1
+
+            # print('x2 size is')
+            # print(x2.shape)
+            #
+            # print('this is up')
+
+            z_layer = z[:, 0:self.nz]
+            z = z[:, self.nz:]
+
+            noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x2.size(2), x2.size(3))
+            x_and_noise = torch.cat([x2, noise], 1)
+            # print('This is up sampling')
+            out = self.up(x_and_noise)
+
+            if self.skip:
+                batch_size, channels, height, width = x.size()
+                # assert channels == self.in_channels
+                f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
+                g = self.g(x).view(batch_size, -1, height * width)                       # B * C//8 * (H * W)
+
+                attention = torch.bmm(f, g)                                        # B * (H * W) * (H * W)
+                attention = self.softmax(attention)
+
+                h = self.h(x).view(batch_size, channels, -1)                       # B * C * (H * W)
+                #
+                self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
+
+                output = out + self.gamma * self_attention_map
+            else:
+                output = out + self.gamma * x
+
+
+            return output
+
 
 # class xml(nn.Module):
 #     """Defines the Unet submodule with skip connection.
@@ -562,209 +781,209 @@ class UnetGenerator(nn.Module):
 #         return output
 
 
-class UnetSkipConnectionBlock(nn.Module):
-    """Defines the Unet submodule with skip connection.
-        X -------------------identity----------------------
-        |-- downsampling -- |submodule| -- upsampling --|
-    """
-
-    def __init__(self, outer_nc, inner_nc, input_nc=None,
-                 submodule=None, outermost=False, innermost=False, norm='batch', use_dropout=False, skip=True, nz=0, downsize=True):
-        """Construct a Unet submodule with skip connections.
-
-        Parameters:
-            outer_nc (int) -- the number of filters in the outer conv layer
-            inner_nc (int) -- the number of filters in the inner conv layer
-            input_nc (int) -- the number of channels in input images/features
-            submodule (UnetSkipConnectionBlock) -- previously defined submodules
-            outermost (bool)    -- if this module is the outermost module
-            innermost (bool)    -- if this module is the innermost module
-            norm_layer          -- normalization layer
-            user_dropout (bool) -- if use dropout layers.
-        """
-        super(UnetSkipConnectionBlock, self).__init__()
-        self.outermost = outermost
-        self.innermost = innermost
-        self.nz = nz
-
-        norm_layer = get_norm_layer(norm_type=norm)
-
-        if type(norm_layer) == functools.partial:
-            use_bias = norm_layer.func == nn.InstanceNorm2d
-        else:
-            use_bias = norm_layer == nn.InstanceNorm2d
-        if input_nc is None:
-            input_nc = outer_nc
-
-        # downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=4,
-        #                      stride=2, padding=1, bias=use_bias)
-        downrelu = nn.LeakyReLU(0.2)
-        # downnorm = norm_layer(inner_nc + self.nz)
-        uprelu = nn.ReLU()
-        # upnorm = norm_layer(outer_nc)
-
-        if outermost:
-            downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
-            down = [downconv]
-
-            up = nn.Upsample(scale_factor=2, mode='bilinear')
-            uppad = nn.ReflectionPad2d(1)
-            upconv = nn.Conv2d(inner_nc * 2, outer_nc, kernel_size=3, stride=1, padding=0)
-            up = [uprelu, up, uppad, upconv, nn.Tanh()]
-        elif innermost:
-            downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
-            down = [downrelu, downconv]
-
-            up_sample = nn.Upsample(scale_factor=2, mode='bilinear')
-            uppad = nn.ReflectionPad2d(1)
-            upconv = nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
-            if norm == 'spectral':
-                # print('this is the innerest')
-                upnorm = norm_layer(nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
-                up = [uprelu, up_sample, uppad, upnorm]
-                # print(upnorm)
-            else:
-                # print('Don\'t use spectral normalization' )
-                upnorm = norm_layer(outer_nc)
-                up = [uprelu, up_sample, uppad, upconv, upnorm]
-
-            # model = down + up
-
-            # self.f = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
-            # self.g = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
-            # self.h = nn.Conv2d(in_channels=input_nc, out_channels=input_nc, kernel_size=1)
-            # self.softmax = nn.Softmax(dim=2)
-            # self.gamma = nn.Parameter(torch.tensor(1e-9))
-        else:
-            # print('this is the middle')
-            # print(norm)
-            if downsize:
-                if norm == 'spectral':
-                    # print('this use spectral normaltization')
-                    downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias))
-                    down = [downrelu, downnorm]
-                else:
-                    # print('Don\'t use spectral normalization' )
-                    downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
-                    downnorm = norm_layer(inner_nc)
-                    down = [downrelu, downconv, downnorm]
-
-
-                up_sampling = nn.Upsample(scale_factor=2, mode='bilinear')
-                uppad = nn.ReflectionPad2d(1)
-                if norm == 'spectral':
-                    # print('this use spectral normaltization')
-                    upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
-                    up = [uprelu, up_sampling, uppad, upnorm]
-                else:
-                    # print('Don\'t use spectral normalization' )
-                    upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
-                    upnorm = norm_layer(outer_nc)
-                    up = [uprelu, up_sampling, uppad, upconv, upnorm]
-            else:
-                if norm == 'spectral':
-                    # print('this use spectral normaltization')
-                    # print('this use spectral normaltization')
-                    downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias))
-                    down = [downrelu, downnorm]
-                else:
-                    # print('Don\'t use spectral normalization' )
-                    downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias)
-                    downnorm = norm_layer(inner_nc)
-                    down = [downrelu, downconv, downnorm]
-
-                if norm == 'spectral':
-                    upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1))
-                    up = [uprelu, upnorm]
-                else:
-                    # print('Don\'t use spectral normalization' )
-                    upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1)
-                    upnorm = norm_layer(outer_nc)
-                    up = [uprelu, upconv, upnorm]
-
-
-        self.down = nn.Sequential(*down)
-        self.up = nn.Sequential(*up)
-        self.submodule = submodule
-
-
-    def forward(self, x, z):
-        if self.outermost:
-            # print('this is outermost')
-            # print(x.shape)
-            # print('This is a new beginning')
-
-            x1 = self.down(x)
-            # print('----------------------------------')
-            # print(x1.shape)
-
-            x2 = self.submodule(x1, z)
-            output = self.up(x2)
-
-            # print('after up')
-            # print(z.shape)
-            #
-            # print('this is a end of one iteration')
-            # print(output.shape)
-            return output
-        # if self.innermost:
-        else:
-            # print(self.nz)
-            # step 1: compute self attention feature map
-            # batch_size, channels, height, width = x.size()
-            # # assert channels == self.in_channels
-            # f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
-            # g = self.g(x).view(batch_size, -1, height * width)                       # B * C//8 * (H * W)
-            #
-            # attention = torch.bmm(f, g)                                        # B * (H * W) * (H * W)
-            # attention = self.softmax(attention)
-            #
-            # h = self.h(x).view(batch_size, channels, -1)                       # B * C * (H * W)
-            #
-            # self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
-
-            # step 2: add the noise plane if the layer is the innerest
-
-            # print('not outest')
-            # print(z.shape)
-            z_layer = z[:, 0:self.nz]
-            z = z[:, self.nz:]
-
-            noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x.size(2), x.size(3))
-            x_and_noise = torch.cat([x, noise], 1)
-
-            # print('x0 size is')
-            # print(x_and_noise.shape)
-            # print('this is down')
-
-            x1 = self.down(x_and_noise)
-            # print('x1 size is ')
-            # print(x1.shape)
-
-            # print('this is submodule')
-            # print(z.shape)
-            if self.submodule is not None:
-                x2 = self.submodule(x1, z)
-            else:
-                x2 = x1
-
-            # print('x2 size is')
-            # print(x2.shape)
-            #
-            # print('this is up')
-
-            z_layer = z[:, 0:self.nz]
-            z = z[:, self.nz:]
-
-            noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x2.size(2), x2.size(3))
-            x_and_noise = torch.cat([x2, noise], 1)
-            # print('This is up sampling')
-            out = self.up(x_and_noise)
-
-            output = torch.cat([x, out], 1)
-
-
-            return output
+# class UnetSkipConnectionBlock(nn.Module):
+#     """Defines the Unet submodule with skip connection.
+#         X -------------------identity----------------------
+#         |-- downsampling -- |submodule| -- upsampling --|
+#     """
+#
+#     def __init__(self, outer_nc, inner_nc, input_nc=None,
+#                  submodule=None, outermost=False, innermost=False, norm='batch', use_dropout=False, skip=True, nz=0, downsize=True):
+#         """Construct a Unet submodule with skip connections.
+#
+#         Parameters:
+#             outer_nc (int) -- the number of filters in the outer conv layer
+#             inner_nc (int) -- the number of filters in the inner conv layer
+#             input_nc (int) -- the number of channels in input images/features
+#             submodule (UnetSkipConnectionBlock) -- previously defined submodules
+#             outermost (bool)    -- if this module is the outermost module
+#             innermost (bool)    -- if this module is the innermost module
+#             norm_layer          -- normalization layer
+#             user_dropout (bool) -- if use dropout layers.
+#         """
+#         super(UnetSkipConnectionBlock, self).__init__()
+#         self.outermost = outermost
+#         self.innermost = innermost
+#         self.nz = nz
+#
+#         norm_layer = get_norm_layer(norm_type=norm)
+#
+#         if type(norm_layer) == functools.partial:
+#             use_bias = norm_layer.func == nn.InstanceNorm2d
+#         else:
+#             use_bias = norm_layer == nn.InstanceNorm2d
+#         if input_nc is None:
+#             input_nc = outer_nc
+#
+#         # downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=4,
+#         #                      stride=2, padding=1, bias=use_bias)
+#         downrelu = nn.LeakyReLU(0.2)
+#         # downnorm = norm_layer(inner_nc + self.nz)
+#         uprelu = nn.ReLU()
+#         # upnorm = norm_layer(outer_nc)
+#
+#         if outermost:
+#             downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
+#             down = [downconv]
+#
+#             up = nn.Upsample(scale_factor=2, mode='bilinear')
+#             uppad = nn.ReflectionPad2d(1)
+#             upconv = nn.Conv2d(inner_nc * 2, outer_nc, kernel_size=3, stride=1, padding=0)
+#             up = [uprelu, up, uppad, upconv, nn.Tanh()]
+#         elif innermost:
+#             downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
+#             down = [downrelu, downconv]
+#
+#             up_sample = nn.Upsample(scale_factor=2, mode='bilinear')
+#             uppad = nn.ReflectionPad2d(1)
+#             upconv = nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
+#             if norm == 'spectral':
+#                 # print('this is the innerest')
+#                 upnorm = norm_layer(nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
+#                 up = [uprelu, up_sample, uppad, upnorm]
+#                 # print(upnorm)
+#             else:
+#                 # print('Don\'t use spectral normalization' )
+#                 upnorm = norm_layer(outer_nc)
+#                 up = [uprelu, up_sample, uppad, upconv, upnorm]
+#
+#             # model = down + up
+#
+#             # self.f = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
+#             # self.g = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
+#             # self.h = nn.Conv2d(in_channels=input_nc, out_channels=input_nc, kernel_size=1)
+#             # self.softmax = nn.Softmax(dim=2)
+#             # self.gamma = nn.Parameter(torch.tensor(1e-9))
+#         else:
+#             # print('this is the middle')
+#             # print(norm)
+#             if downsize:
+#                 if norm == 'spectral':
+#                     # print('this use spectral normaltization')
+#                     downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias))
+#                     down = [downrelu, downnorm]
+#                 else:
+#                     # print('Don\'t use spectral normalization' )
+#                     downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
+#                     downnorm = norm_layer(inner_nc)
+#                     down = [downrelu, downconv, downnorm]
+#
+#
+#                 up_sampling = nn.Upsample(scale_factor=2, mode='bilinear')
+#                 uppad = nn.ReflectionPad2d(1)
+#                 if norm == 'spectral':
+#                     # print('this use spectral normaltization')
+#                     upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
+#                     up = [uprelu, up_sampling, uppad, upnorm]
+#                 else:
+#                     # print('Don\'t use spectral normalization' )
+#                     upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
+#                     upnorm = norm_layer(outer_nc)
+#                     up = [uprelu, up_sampling, uppad, upconv, upnorm]
+#             else:
+#                 if norm == 'spectral':
+#                     # print('this use spectral normaltization')
+#                     # print('this use spectral normaltization')
+#                     downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias))
+#                     down = [downrelu, downnorm]
+#                 else:
+#                     # print('Don\'t use spectral normalization' )
+#                     downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias)
+#                     downnorm = norm_layer(inner_nc)
+#                     down = [downrelu, downconv, downnorm]
+#
+#                 if norm == 'spectral':
+#                     upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1))
+#                     up = [uprelu, upnorm]
+#                 else:
+#                     # print('Don\'t use spectral normalization' )
+#                     upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1)
+#                     upnorm = norm_layer(outer_nc)
+#                     up = [uprelu, upconv, upnorm]
+#
+#
+#         self.down = nn.Sequential(*down)
+#         self.up = nn.Sequential(*up)
+#         self.submodule = submodule
+#
+#
+#     def forward(self, x, z):
+#         if self.outermost:
+#             # print('this is outermost')
+#             # print(x.shape)
+#             # print('This is a new beginning')
+#
+#             x1 = self.down(x)
+#             # print('----------------------------------')
+#             # print(x1.shape)
+#
+#             x2 = self.submodule(x1, z)
+#             output = self.up(x2)
+#
+#             # print('after up')
+#             # print(z.shape)
+#             #
+#             # print('this is a end of one iteration')
+#             # print(output.shape)
+#             return output
+#         # if self.innermost:
+#         else:
+#             # print(self.nz)
+#             # step 1: compute self attention feature map
+#             # batch_size, channels, height, width = x.size()
+#             # # assert channels == self.in_channels
+#             # f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
+#             # g = self.g(x).view(batch_size, -1, height * width)                       # B * C//8 * (H * W)
+#             #
+#             # attention = torch.bmm(f, g)                                        # B * (H * W) * (H * W)
+#             # attention = self.softmax(attention)
+#             #
+#             # h = self.h(x).view(batch_size, channels, -1)                       # B * C * (H * W)
+#             #
+#             # self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
+#
+#             # step 2: add the noise plane if the layer is the innerest
+#
+#             # print('not outest')
+#             # print(z.shape)
+#             z_layer = z[:, 0:self.nz]
+#             z = z[:, self.nz:]
+#
+#             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x.size(2), x.size(3))
+#             x_and_noise = torch.cat([x, noise], 1)
+#
+#             # print('x0 size is')
+#             # print(x_and_noise.shape)
+#             # print('this is down')
+#
+#             x1 = self.down(x_and_noise)
+#             # print('x1 size is ')
+#             # print(x1.shape)
+#
+#             # print('this is submodule')
+#             # print(z.shape)
+#             if self.submodule is not None:
+#                 x2 = self.submodule(x1, z)
+#             else:
+#                 x2 = x1
+#
+#             # print('x2 size is')
+#             # print(x2.shape)
+#             #
+#             # print('this is up')
+#
+#             z_layer = z[:, 0:self.nz]
+#             z = z[:, self.nz:]
+#
+#             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x2.size(2), x2.size(3))
+#             x_and_noise = torch.cat([x2, noise], 1)
+#             # print('This is up sampling')
+#             out = self.up(x_and_noise)
+#
+#             output = torch.cat([x, out], 1)
+#
+#
+#             return output
 
 
 
