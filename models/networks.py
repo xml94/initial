@@ -165,7 +165,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     return init_net(net, init_type, init_gain, gpu_ids)
 
 
-def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[], nz_D=4):
     """Create a discriminator
 
     Parameters:
@@ -199,9 +199,9 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
     # norm_layer = get_norm_layer(norm_type=norm)
 
     if netD == 'basic':  # default PatchGAN classifier
-        net = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm=norm)
+        net = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm=norm, nz_D=nz_D)
     elif netD == 'n_layers':  # more options
-        net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm=norm)
+        net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm=norm, nz_D=nz_D)
     # elif netD == 'pixel':     # classify if each pixel is real or fake
     #     net = PixelDiscriminator(input_nc, ndf, norm=norm)
     else:
@@ -638,8 +638,9 @@ class UnetSkipConnectionBlock(nn.Module):
 
             # print('not outest')
             # print(z.shape)
-            z_layer = z[:, 0:self.nz]
-            z = z[:, self.nz:]
+            # z_layer = z[:, 0:self.nz]
+            # z = z[:, self.nz:]
+            z_layer = z
 
             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x.size(2), x.size(3))
             x_and_noise = torch.cat([x, noise], 1)
@@ -664,8 +665,8 @@ class UnetSkipConnectionBlock(nn.Module):
             #
             # print('this is up')
 
-            z_layer = z[:, 0:self.nz]
-            z = z[:, self.nz:]
+            # z_layer = z[:, 0:self.nz]
+            # z = z[:, self.nz:]
 
             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x2.size(2), x2.size(3))
             x_and_noise = torch.cat([x2, noise], 1)
@@ -685,9 +686,11 @@ class UnetSkipConnectionBlock(nn.Module):
                 #
                 self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
 
-                output = out + self.gamma * self_attention_map
+                output = out + self_attention_map # self.gamma *
             else:
-                output = out + self.gamma * x
+                output = out + x # self.gamma *
+
+            # print(self.gamma)
 
 
             return output
@@ -1154,7 +1157,7 @@ class UnetSkipConnectionBlock(nn.Module):
 class NLayerDiscriminator(nn.Module):
     """Defines a PatchGAN discriminator"""
 
-    def __init__(self, input_nc, ndf=64, n_layers=3, norm='batch'):
+    def __init__(self, input_nc, ndf=64, n_layers=3, norm='batch', nz_D=4):
         """Construct a PatchGAN discriminator
 
         Parameters:
@@ -1172,9 +1175,11 @@ class NLayerDiscriminator(nn.Module):
         else:
             use_bias = norm_layer != nn.BatchNorm2d
 
+        self.nz_D = nz_D
+
         kw = 4
         padw = 1
-        sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
+        sequence = [nn.Conv2d(input_nc + self.nz_D, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
         nf_mult = 1
         nf_mult_prev = 1
 
@@ -1216,9 +1221,13 @@ class NLayerDiscriminator(nn.Module):
 
         self.model = nn.Sequential(*sequence)
 
-    def forward(self, input):
+    def forward(self, input, noise):
         """Standard forward."""
-        output = self.model(input)
+
+        noise = noise.view(noise.size(0), noise.size(1), 1, 1).expand(noise.size(0), noise.size(1), input.size(2), input.size(3))
+        input_noise = torch.cat([input, noise], 1)
+
+        output = self.model(input_noise)
         # print('this is D')
         # print(output.shape)
         return output

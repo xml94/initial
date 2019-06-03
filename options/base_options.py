@@ -55,8 +55,8 @@ class BaseOptions():
         parser.add_argument('--verbose', action='store_true', help='if specified, print more debugging information')
         parser.add_argument('--suffix', default='', type=str, help='customized suffix: opt.name = opt.name + suffix: e.g., {model}_{netG}_size{load_size}')
 
-        parser.add_argument('--noise_length', type=int, default=16, help='the length of noise vector')
-        parser.add_argument('--noise_number', type=int, default=7*2, help='the number of every noise in every layer')
+        parser.add_argument('--noise_length', type=int, default=4, help='the length of noise vector')
+        parser.add_argument('--noise_number', type=int, default=1, help='the number of every noise in every layer') # 7*2
         parser.add_argument('--random_type', type=str, default='gauss', help='the type of random noise') # uniform, gauss
 
         parser.add_argument('--random_rotation', type=int, default=1, help='whether use the random rotation in preprocessing')
@@ -65,6 +65,7 @@ class BaseOptions():
         parser.add_argument('--norm_G', type=str, default='spectral', help='instance normalization or batch normalization [instance | batch | none]')
         parser.add_argument('--norm_D', type=str, default='instance', help='instance normalization or batch normalization [instance | batch | none]')
 
+        parser.add_argument('--nz_D', type=int, default=4, help='the length of noise vector in every layer of Discriminator')
         self.initialized = True
         return parser
 

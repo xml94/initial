@@ -56,6 +56,9 @@ class CycleGANModel(BaseModel):
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
         visual_names_B = ['real_B', 'fake_A', 'rec_B']
+        if self.opt.identity:
+            self.opt.lambda_identity = 0.5
+
         if self.isTrain and self.opt.lambda_identity > 0.0:  # if identity loss is used, we also visualize idt_B=G_A(B) ad idt_A=G_A(B)
             visual_names_A.append('idt_B')
             visual_names_B.append('idt_A')
@@ -88,9 +91,9 @@ class CycleGANModel(BaseModel):
 
         if self.isTrain:  # define discriminators
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm_D, opt.init_type, opt.init_gain, self.gpu_ids)
+                                            opt.n_layers_D, opt.norm_D, opt.init_type, opt.init_gain, self.gpu_ids, nz_D=self.opt.nz_D)
             self.netD_B = networks.define_D(opt.input_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm_D, opt.init_type, opt.init_gain, self.gpu_ids)
+                                            opt.n_layers_D, opt.norm_D, opt.init_type, opt.init_gain, self.gpu_ids, nz_D=self.opt.nz_D)
 
         if self.isTrain:
             if opt.lambda_identity > 0.0:  # only works when input and output images have the same number of channels
@@ -140,22 +143,23 @@ class CycleGANModel(BaseModel):
 
         if self.isTrain:
 
-            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
+            noise = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
+            self.noise = noise
             # print('this is new epoch')
             # print(z.shape)
-            self.fake_B = self.netG_A(self.real_A, z)  # G_A(A)
+            self.fake_B = self.netG_A(self.real_A, noise)  # G_A(A)
             # print('-------------------------1  done----------------------------')
 
-            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
-            self.rec_A = self.netG_B(self.fake_B, z)   # G_B(G_A(A))
+            # z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
+            self.rec_A = self.netG_B(self.fake_B, noise)   # G_B(G_A(A))
             # print('-------------------------2  done----------------------------')
 
-            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
-            self.fake_A = self.netG_B(self.real_B, z)  # G_B(B)
+            # z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
+            self.fake_A = self.netG_B(self.real_B, noise)  # G_B(B)
             # print('-------------------------3  done----------------------------')
 
-            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
-            self.rec_B = self.netG_A(self.fake_A, z)   # G_A(G_B(B))
+            # z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
+            self.rec_B = self.netG_A(self.fake_A, noise)   # G_A(G_B(B))
 
             # print('-------------------------4  done----------------------------')
 
@@ -208,10 +212,12 @@ class CycleGANModel(BaseModel):
         We also call loss_D.backward() to calculate the gradients.
         """
         # Real
-        pred_real = netD(real)
+        noise = self.noise
+
+        pred_real = netD(real, noise)
         loss_D_real = self.criterionGAN(pred_real, True)
         # Fake
-        pred_fake = netD(fake.detach())
+        pred_fake = netD(fake.detach(), noise)
         loss_D_fake = self.criterionGAN(pred_fake, False)
         # Combined loss and calculate gradients
         loss_D = (loss_D_real + loss_D_fake) * 0.5
@@ -248,6 +254,8 @@ class CycleGANModel(BaseModel):
             self.loss_idt_A = 0
             self.loss_idt_B = 0
 
+        noise = self.noise
+
         # Forward cycle loss || G_B(G_A(A)) - A||
         self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
         # self.loss_cycle_A.backward()
@@ -255,10 +263,10 @@ class CycleGANModel(BaseModel):
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
         # self.loss_cycle_B.backward()
         # GAN loss D_B(G_B(B))
-        self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
+        self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A, noise), True)
         # self.loss_G_B.backward()
         # GAN loss D_A(G_A(A))
-        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
+        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B, noise), True)
         # self.loss_G_A.backward()
 
         # combined loss and calculate gradients
