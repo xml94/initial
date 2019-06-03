@@ -459,7 +459,7 @@ class UnetGenerator(nn.Module):
         super(UnetGenerator, self).__init__()
         # construct unet structure
         unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm=norm, nz=nz,
-                                             innermost=True, skip=False, downsize=False)  # add the innermost layer
+                                             innermost=True, skip=False)  # add the innermost layer
         for i in range(num_downs - 5): # add intermediate layers with ngf * 8 filters
             unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, nz=nz,
                                                  norm=norm, use_dropout=use_dropout, skip=False, downsize=True)
@@ -615,18 +615,18 @@ class UnetSkipConnectionBlock(nn.Module):
             downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
             down = [downrelu, downconv]
 
-            up = nn.Upsample(scale_factor=2, mode='bilinear')
+            up_sample = nn.Upsample(scale_factor=2, mode='bilinear')
             uppad = nn.ReflectionPad2d(1)
             upconv = nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
             if norm == 'spectral':
                 # print('this is the innerest')
                 upnorm = norm_layer(nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
-                up = [uprelu, up, uppad, upnorm]
+                up = [uprelu, up_sample, uppad, upnorm]
                 # print(upnorm)
             else:
-                print('Don\'t use spectral normalization' )
+                # print('Don\'t use spectral normalization' )
                 upnorm = norm_layer(outer_nc)
-                up = [uprelu, up, uppad, upconv, upnorm]
+                up = [uprelu, up_sample, uppad, upconv, upnorm]
 
             # model = down + up
 
@@ -639,46 +639,46 @@ class UnetSkipConnectionBlock(nn.Module):
             # print('this is the middle')
             # print(norm)
             if downsize:
-                downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
                 if norm == 'spectral':
-                    print('this use spectral normaltization')
+                    # print('this use spectral normaltization')
                     downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias))
                     down = [downrelu, downnorm]
                 else:
-                    print('Don\'t use spectral normalization' )
+                    # print('Don\'t use spectral normalization' )
+                    downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
                     downnorm = norm_layer(inner_nc)
                     down = [downrelu, downconv, downnorm]
 
 
-                up = nn.Upsample(scale_factor=2, mode='bilinear')
+                up_sampling = nn.Upsample(scale_factor=2, mode='bilinear')
                 uppad = nn.ReflectionPad2d(1)
-                upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
                 if norm == 'spectral':
-                    print('this use spectral normaltization')
+                    # print('this use spectral normaltization')
                     upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
-                    up = [uprelu, up, uppad, upnorm]
+                    up = [uprelu, up_sampling, uppad, upnorm]
                 else:
-                    print('Don\'t use spectral normalization' )
+                    # print('Don\'t use spectral normalization' )
+                    upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
                     upnorm = norm_layer(outer_nc)
-                    up = [uprelu, up, uppad, upconv, upnorm]
+                    up = [uprelu, up_sampling, uppad, upconv, upnorm]
             else:
-                downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias)
                 if norm == 'spectral':
-                    print('this use spectral normaltization')
+                    # print('this use spectral normaltization')
                     # print('this use spectral normaltization')
                     downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias))
                     down = [downrelu, downnorm]
                 else:
-                    print('Don\'t use spectral normalization' )
+                    # print('Don\'t use spectral normalization' )
+                    downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias)
                     downnorm = norm_layer(inner_nc)
                     down = [downrelu, downconv, downnorm]
 
-                upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1)
                 if norm == 'spectral':
                     upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1))
                     up = [uprelu, upnorm]
                 else:
-                    print('Don\'t use spectral normalization' )
+                    # print('Don\'t use spectral normalization' )
+                    upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1)
                     upnorm = norm_layer(outer_nc)
                     up = [uprelu, upconv, upnorm]
 
