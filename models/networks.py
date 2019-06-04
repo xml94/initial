@@ -148,14 +148,14 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     The generator has been initialized by <init_net>. It uses RELU for non-linearity.
     """
     net = None
-    norm_layer = get_norm_layer(norm_type=norm)
+    # norm_layer = get_norm_layer(norm_type=norm)
 
     if netG == 'resnet_9blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm=norm, use_dropout=use_dropout, n_blocks=9, nz=nz)
     elif netG == 'resnet_6blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm=norm, use_dropout=use_dropout, n_blocks=6, nz=nz)
     elif netG == 'unet_128':
-        net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+        net = UnetGenerator(input_nc, output_nc, 7, ngf, norm=norm, use_dropout=use_dropout, nz=nz)
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm=norm, use_dropout=use_dropout, nz=nz)
     # elif netG == 'atte_noise_256'
@@ -325,7 +325,7 @@ class ResnetGenerator(nn.Module):
     We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
     """
 
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
+    def __init__(self, input_nc, output_nc, ngf=64, norm='instance', use_dropout=False, n_blocks=6, padding_type='reflect', nz=4):
         """Construct a Resnet-based generator
 
         Parameters:
@@ -339,13 +339,18 @@ class ResnetGenerator(nn.Module):
         """
         assert(n_blocks >= 0)
         super(ResnetGenerator, self).__init__()
+
+        self.nz = nz
+
+        norm_layer = get_norm_layer(norm_type=norm)
+
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
         model = [nn.ReflectionPad2d(3),
-                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
+                 nn.Conv2d(input_nc + self.nz, ngf, kernel_size=7, padding=0, bias=use_bias),
                  norm_layer(ngf),
                  nn.ReLU(True)]
 
@@ -377,7 +382,11 @@ class ResnetGenerator(nn.Module):
 
     def forward(self, input, z):
         """Standard forward"""
-        return self.model(input)
+        z = z[:, 0:self.nz]
+
+        z = z.view(z.size(0), z.size(1), 1, 1).expand(z.size(0), z.size(1), input.size(2), input.size(3))
+        input_and_noise = torch.cat([input, z], 1)
+        return self.model(input_and_noise)
 
 
 class ResnetBlock(nn.Module):
