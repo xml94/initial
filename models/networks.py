@@ -462,7 +462,7 @@ class UnetGenerator(nn.Module):
                                              innermost=True, skip=False)  # add the innermost layer
         for i in range(num_downs - 5): # add intermediate layers with ngf * 8 filters
             unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, nz=nz,
-                                                 norm=norm, use_dropout=use_dropout, skip=True, downsize=True)
+                                                 norm=norm, use_dropout=use_dropout, skip=False, downsize=True)
         # gradually reduce the number of filters from ngf * 8 to ngf
         unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm=norm, skip=False, nz=nz,)
         unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm=norm, nz=nz, skip=False)
@@ -690,9 +690,9 @@ class UnetSkipConnectionBlock(nn.Module):
                 #
                 self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
 
-                output = out + self_attention_map * self.gamma # self.gamma *
+                output = out + self_attention_map # * self.gamma
             else:
-                output = out + x * self.gamma # self.gamma *
+                output = out + x # * self.gamma
 
             # print(self.gamma)
 
