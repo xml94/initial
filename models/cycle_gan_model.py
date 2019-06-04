@@ -56,8 +56,8 @@ class CycleGANModel(BaseModel):
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
         visual_names_B = ['real_B', 'fake_A', 'rec_B']
-        if self.opt.identity:
-            self.opt.lambda_identity = 0.5
+        # if self.opt.identity:
+        #     self.opt.lambda_identity = 0.5
 
         if self.isTrain and self.opt.lambda_identity > 0.0:  # if identity loss is used, we also visualize idt_B=G_A(B) ad idt_A=G_A(B)
             visual_names_A.append('idt_B')
@@ -76,10 +76,10 @@ class CycleGANModel(BaseModel):
         # print('this is process before generate network')
         # print(opt.norm_G)
         # print(opt.norm_D)
-        self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm_G,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, nz=opt.noise_length)
-        self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm_G,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, nz=opt.noise_length)
+        self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm_G, not opt.no_dropout,
+                                        opt.init_type, opt.init_gain, self.gpu_ids, nz=opt.noise_length)
+        self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm_G, not opt.no_dropout,
+                                        opt.init_type, opt.init_gain, self.gpu_ids, nz=opt.noise_length)
 
         # print('parameters are these:---------------------------------------------')
         # for name, param in self.netG_A.named_parameters():

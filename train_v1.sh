@@ -1,11 +1,11 @@
 set -ex
 python train.py  \
 --dataroot ./datasets/tomato \
---name tomato_v9_May31_batch \
+--name tomato_June04_v3 \
 --model cycle_gan \
 --netG unet_256 \
---display_port 8098 \
---gpu_ids 2 \
---batch_size 4 \
---norm_G batch \
---norm_D batch
+--display_port 8096 \
+--gpu_ids 1 \
+--batch_size 6 \
+--norm_G spectral \
+--norm_D spectral

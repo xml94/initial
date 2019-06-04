@@ -470,6 +470,9 @@ class UnetGenerator(nn.Module):
         self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, nz=nz,
                                              norm=norm, skip=False)  # add the outermost layer
 
+        for name, param in self.named_parameters():
+            print(name)
+
     def forward(self, input, z):
         """Standard forward"""
         return self.model(input, z)
@@ -638,9 +641,9 @@ class UnetSkipConnectionBlock(nn.Module):
 
             # print('not outest')
             # print(z.shape)
-            # z_layer = z[:, 0:self.nz]
-            # z = z[:, self.nz:]
-            z_layer = z
+            z_layer = z[:, 0:self.nz]
+            z = z[:, self.nz:]
+            # z_layer = z
 
             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x.size(2), x.size(3))
             x_and_noise = torch.cat([x, noise], 1)
@@ -665,10 +668,11 @@ class UnetSkipConnectionBlock(nn.Module):
             #
             # print('this is up')
 
-            # z_layer = z[:, 0:self.nz]
-            # z = z[:, self.nz:]
+            z_layer = z[:, 0:self.nz]
+            z = z[:, self.nz:]
 
             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x2.size(2), x2.size(3))
+            # print(noise.shape)
             x_and_noise = torch.cat([x2, noise], 1)
             # print('This is up sampling')
             out = self.up(x_and_noise)
@@ -686,9 +690,9 @@ class UnetSkipConnectionBlock(nn.Module):
                 #
                 self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
 
-                output = out + self_attention_map # self.gamma *
+                output = out + self_attention_map * self.gamma # self.gamma *
             else:
-                output = out + x # self.gamma *
+                output = out + x * self.gamma # self.gamma *
 
             # print(self.gamma)
 
@@ -1179,7 +1183,7 @@ class NLayerDiscriminator(nn.Module):
 
         kw = 4
         padw = 1
-        sequence = [nn.Conv2d(input_nc + self.nz_D, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
+        sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
         nf_mult = 1
         nf_mult_prev = 1
 
@@ -1213,21 +1217,32 @@ class NLayerDiscriminator(nn.Module):
             sequence += [conv]
             sequence += [norm_layer(ndf * nf_mult)]
 
-        sequence += [nn.LeakyReLU(0.2)]
+        # sequence += [nn.LeakyReLU(0.2)]
 
-        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
+        # sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
 
         # sequence += [nn.AdaptiveAvgPool2d(1)]
 
         self.model = nn.Sequential(*sequence)
 
+        self.linear = nn.Linear(ndf * nf_mult, 1)
+
+        self.embed_noise = nn.utils.spectral_norm(nn.Linear(self.nz_D, ndf * nf_mult))
+
+        print('There are {:d} channels in Discriminator'.format(ndf * nf_mult))
+
     def forward(self, input, noise):
         """Standard forward."""
+        out = self.model(input)
 
-        noise = noise.view(noise.size(0), noise.size(1), 1, 1).expand(noise.size(0), noise.size(1), input.size(2), input.size(3))
-        input_noise = torch.cat([input, noise], 1)
+        # noise = noise.view(noise.size(0), noise.size(1), 1, 1).expand(noise.size(0), noise.size(1), input.size(2), input.size(3))
+        out = torch.nn.functional.relu(out).view(out.size(0), out.size(1), -1).sum(2) # B * C
+        out_linear = self.linear(out) # B * 1
 
-        output = self.model(input_noise)
+        noise = self.embed_noise(noise) # B * nz ==> B * C (specific)
+        label_noise = (noise * out).sum(1) # B * 1, noise shoule be B * C
+
+        output = out_linear + label_noise # B * 1
         # print('this is D')
         # print(output.shape)
         return output

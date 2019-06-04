@@ -6,4 +6,6 @@ python train.py  \
 --netG unet_256 \
 --display_port 8097 \
 --gpu_ids 2 \
+--norm_G batch \
+--norm_D batch \
 --batch_size 6

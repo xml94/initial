@@ -1,10 +1,10 @@
 set -ex
 python test.py  \
 --dataroot ./datasets/tomato \
---name tomato_v9_May31_batch \
+--name tomato_June04_v2 \
 --model cycle_gan \
 --netG unet_256 \
---gpu_ids 1 \
---norm_G batch \
---norm_D batch \
---batch_size 4
+--gpu_ids 0 \
+--norm_G spectral \
+--norm_D spectral \
+--batch_size 6
