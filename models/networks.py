@@ -538,7 +538,7 @@ class UnetSkipConnectionBlock(nn.Module):
 
             up = nn.Upsample(scale_factor=2, mode='bilinear')
             uppad = nn.ReflectionPad2d(1)
-            upconv = nn.Conv2d(inner_nc, outer_nc, kernel_size=3, stride=1, padding=0)
+            upconv = nn.Conv2d(inner_nc * 2, outer_nc, kernel_size=3, stride=1, padding=0)
             up = [uprelu, up, uppad, upconv, nn.Tanh()]
         elif innermost:
             self.gamma = nn.Parameter(torch.tensor(1e-9))
@@ -589,11 +589,11 @@ class UnetSkipConnectionBlock(nn.Module):
                 uppad = nn.ReflectionPad2d(1)
                 if norm == 'spectral':
                     # print('this use spectral normaltization')
-                    upnorm = norm_layer(nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
+                    upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
                     up = [uprelu, up_sampling, uppad, upnorm]
                 else:
                     # print('Don\'t use spectral normalization' )
-                    upconv = nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
+                    upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
                     upnorm = norm_layer(outer_nc)
                     up = [uprelu, up_sampling, uppad, upconv, upnorm]
             else:
@@ -609,11 +609,11 @@ class UnetSkipConnectionBlock(nn.Module):
                     down = [downrelu, downconv, downnorm]
 
                 if norm == 'spectral':
-                    upnorm = norm_layer(nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=1))
+                    upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1))
                     up = [uprelu, upnorm]
                 else:
                     # print('Don\'t use spectral normalization' )
-                    upconv = nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=1)
+                    upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1)
                     upnorm = norm_layer(outer_nc)
                     up = [uprelu, upconv, upnorm]
 
@@ -701,9 +701,12 @@ class UnetSkipConnectionBlock(nn.Module):
                 #
                 self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
 
-                output = out + self_attention_map # * self.gamma
+                # output = out + self_attention_map # * self.gamma
+                output = torch.cat([out, self_attention_map], 1)
             else:
-                output = out + x # * self.gamma
+                # output = out + x # * self.gamma
+                # if add:
+                output = torch.cat([out, x], 1)
 
             # print(self.gamma)
 
