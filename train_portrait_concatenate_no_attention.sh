@@ -1,10 +1,11 @@
 set -ex
-python test.py  \
+python train.py  \
 --dataroot ./datasets/portrait \
 --name portrait_June04_v7_catcontenate_no_attention \
 --model cycle_gan \
 --netG unet_256 \
---gpu_ids 1 \
+--display_port 8096 \
+--gpu_ids 0 \
 --norm_G spectral \
 --norm_D spectral \
---batch_size 3
+--batch_size 4

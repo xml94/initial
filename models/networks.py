@@ -470,16 +470,16 @@ class UnetGenerator(nn.Module):
         super(UnetGenerator, self).__init__()
         # construct unet structure
         unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm=norm, nz=nz,
-                                             innermost=True, skip=False)  # add the innermost layer
+                                             innermost=True, attention=False)  # add the innermost layer
         for i in range(num_downs - 5): # add intermediate layers with ngf * 8 filters
             unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, nz=nz,
-                                                 norm=norm, use_dropout=use_dropout, skip=False, downsize=True)
+                                                 norm=norm, use_dropout=use_dropout, attention=False, downsize=True)
         # gradually reduce the number of filters from ngf * 8 to ngf
-        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm=norm, skip=False, nz=nz,)
-        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm=norm, nz=nz, skip=False)
-        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm=norm, nz=nz, skip=False)
+        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm=norm, attention=False, nz=nz,)
+        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm=norm, nz=nz, attention=False)
+        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm=norm, nz=nz, attention=False)
         self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, nz=nz,
-                                             norm=norm, skip=False)  # add the outermost layer
+                                             norm=norm, attention=False)  # add the outermost layer
 
         for name, param in self.named_parameters():
             print(name)
@@ -497,7 +497,7 @@ class UnetSkipConnectionBlock(nn.Module):
     """
 
     def __init__(self, outer_nc, inner_nc, input_nc=None,
-                 submodule=None, outermost=False, innermost=False, norm='batch', use_dropout=False, skip=False, nz=0, downsize=True):
+                 submodule=None, outermost=False, innermost=False, norm='batch', use_dropout=False, attention=False, nz=0, downsize=True):
         """Construct a Unet submodule with skip connections.
 
         Parameters:
@@ -514,7 +514,7 @@ class UnetSkipConnectionBlock(nn.Module):
         self.outermost = outermost
         self.innermost = innermost
         self.nz = nz
-        self.skip = skip
+        self.attention = attention
 
         norm_layer = get_norm_layer(norm_type=norm)
 
@@ -536,17 +536,17 @@ class UnetSkipConnectionBlock(nn.Module):
             downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
             down = [downconv]
 
-            up = nn.Upsample(scale_factor=2, mode='bilinear')
+            up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
             uppad = nn.ReflectionPad2d(1)
             upconv = nn.Conv2d(inner_nc * 2, outer_nc, kernel_size=3, stride=1, padding=0)
             up = [uprelu, up, uppad, upconv, nn.Tanh()]
         elif innermost:
-            self.gamma = nn.Parameter(torch.tensor(1e-9))
+            # self.gamma = nn.Parameter(torch.tensor(1e-9))
 
             downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
             down = [downrelu, downconv]
 
-            up_sample = nn.Upsample(scale_factor=2, mode='bilinear')
+            up_sample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
             uppad = nn.ReflectionPad2d(1)
             upconv = nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
             if norm == 'spectral':
@@ -564,9 +564,9 @@ class UnetSkipConnectionBlock(nn.Module):
             # print('this is the middle')
             # print(norm)
 
-            self.gamma = nn.Parameter(torch.tensor(1e-9))
+            # self.gamma = nn.Parameter(torch.tensor(1e-9))
 
-            if skip:
+            if attention:
                 self.f = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
                 self.g = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
                 self.h = nn.Conv2d(in_channels=input_nc, out_channels=input_nc, kernel_size=1)
@@ -585,7 +585,7 @@ class UnetSkipConnectionBlock(nn.Module):
                     down = [downrelu, downconv, downnorm]
 
 
-                up_sampling = nn.Upsample(scale_factor=2, mode='bilinear')
+                up_sampling = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
                 uppad = nn.ReflectionPad2d(1)
                 if norm == 'spectral':
                     # print('this use spectral normaltization')
@@ -652,9 +652,9 @@ class UnetSkipConnectionBlock(nn.Module):
 
             # print('not outest')
             # print(z.shape)
-            z_layer = z[:, 0:self.nz]
-            z = z[:, self.nz:]
-            # z_layer = z
+            # z_layer = z[:, 0:self.nz]
+            # z = z[:, self.nz:]
+            z_layer = z
 
             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x.size(2), x.size(3))
             x_and_noise = torch.cat([x, noise], 1)
@@ -679,8 +679,8 @@ class UnetSkipConnectionBlock(nn.Module):
             #
             # print('this is up')
 
-            z_layer = z[:, 0:self.nz]
-            z = z[:, self.nz:]
+            # z_layer = z[:, 0:self.nz]
+            # z = z[:, self.nz:]
 
             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x2.size(2), x2.size(3))
             # print(noise.shape)
@@ -688,7 +688,7 @@ class UnetSkipConnectionBlock(nn.Module):
             # print('This is up sampling')
             out = self.up(x_and_noise)
 
-            if self.skip:
+            if self.attention:
                 batch_size, channels, height, width = x.size()
                 # assert channels == self.in_channels
                 f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
