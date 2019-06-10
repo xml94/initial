@@ -1,0 +1,228 @@
+multiai3 $ bash train.sh
++ python train.py --dataroot ./datasets/tomato --name tomato_June05_v2 --model cycle_gan --netG unet_256 --display_port 8098 --gpu_ids 2 --norm_G spectral --norm_D spectral --batch_size 4
+----------------- Options ---------------
+               batch_size: 4                             	[default: 1]
+                    beta1: 0.5                           
+          checkpoints_dir: ./checkpoints                 
+           continue_train: False                         
+                crop_size: 256                           
+                 dataroot: ./datasets/tomato             	[default: None]
+             dataset_mode: unaligned                     
+                direction: AtoB                          
+              display_env: main                          
+             display_freq: 400                           
+               display_id: 1                             
+            display_ncols: 4                             
+             display_port: 8098                          	[default: 8097]
+           display_server: http://localhost              
+          display_winsize: 256                           
+                    epoch: latest                        
+              epoch_count: 1                             
+                 gan_mode: lsgan                         
+                  gpu_ids: 2                             	[default: 0]
+                 identity: False                         
+                init_gain: 0.02                          
+                init_type: normal                        
+                 input_nc: 3                             
+                  isTrain: True                          	[default: None]
+                 lambda_A: 5                             
+                 lambda_B: 5                             
+          lambda_identity: 10                            
+                load_iter: 0                             	[default: 0]
+                load_size: 286                           
+                       lr: 0.0002                        
+           lr_decay_iters: 50                            
+                lr_policy: linear                        
+         max_dataset_size: inf                           
+                    model: cycle_gan                     
+               n_layers_D: 3                             
+                     name: tomato_June05_v2              	[default: experiment_name]
+                      ndf: 64                            
+                     netD: basic                         
+                     netG: unet_256                      	[default: resnet_9blocks]
+                      ngf: 64                            
+                    niter: 100                           
+              niter_decay: 100                           
+               no_dropout: True                          
+                  no_flip: False                         
+                  no_html: False                         
+             noise_length: 4                             
+             noise_number: 1                             
+                   norm_D: spectral                      	[default: instance]
+                   norm_G: spectral                      	[default: instance]
+              num_threads: 4                             
+                     nz_D: 4                             
+                output_nc: 3                             
+                    phase: train                         
+                pool_size: 50                            
+               preprocess: resize_and_crop               
+               print_freq: 100                           
+          random_rotation: 1                             
+              random_type: gauss                         
+           rotation_range: 45                            
+             save_by_iter: False                         
+          save_epoch_freq: 5                             
+         save_latest_freq: 5000                          
+           serial_batches: False                         
+                   suffix:                               
+         update_html_freq: 1000                          
+                  verbose: False                         
+----------------- End -------------------
+dataset [UnalignedDataset] was created
+The number of training images = 408
+model.down.0.weight
+torch.Size([64, 7, 3, 3])
+model.up.3.weight
+torch.Size([3, 128, 3, 3])
+model.up.3.bias
+torch.Size([3])
+model.submodule.down.1.weight_orig
+torch.Size([128, 68, 3, 3])
+model.submodule.up.3.bias
+torch.Size([64])
+model.submodule.up.3.weight_orig
+torch.Size([64, 260, 3, 3])
+model.submodule.submodule.down.1.weight_orig
+torch.Size([256, 132, 3, 3])
+model.submodule.submodule.up.3.bias
+torch.Size([128])
+model.submodule.submodule.up.3.weight_orig
+torch.Size([128, 516, 3, 3])
+model.submodule.submodule.submodule.down.1.weight_orig
+torch.Size([512, 260, 3, 3])
+model.submodule.submodule.submodule.up.3.bias
+torch.Size([256])
+model.submodule.submodule.submodule.up.3.weight_orig
+torch.Size([256, 1028, 3, 3])
+model.submodule.submodule.submodule.submodule.down.1.weight_orig
+torch.Size([512, 516, 3, 3])
+model.submodule.submodule.submodule.submodule.up.3.bias
+torch.Size([512])
+model.submodule.submodule.submodule.submodule.up.3.weight_orig
+torch.Size([512, 1028, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.down.1.weight_orig
+torch.Size([512, 516, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.up.3.bias
+torch.Size([512])
+model.submodule.submodule.submodule.submodule.submodule.up.3.weight_orig
+torch.Size([512, 1028, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.submodule.down.1.weight_orig
+torch.Size([512, 516, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.submodule.up.3.bias
+torch.Size([512])
+model.submodule.submodule.submodule.submodule.submodule.submodule.up.3.weight_orig
+torch.Size([512, 1028, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.submodule.submodule.down.1.weight
+torch.Size([512, 516, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.submodule.submodule.up.3.bias
+torch.Size([512])
+model.submodule.submodule.submodule.submodule.submodule.submodule.submodule.up.3.weight_orig
+torch.Size([512, 516, 3, 3])
+initialize network with normal
+model.down.0.weight
+torch.Size([64, 7, 3, 3])
+model.up.3.weight
+torch.Size([3, 128, 3, 3])
+model.up.3.bias
+torch.Size([3])
+model.submodule.down.1.weight_orig
+torch.Size([128, 68, 3, 3])
+model.submodule.up.3.bias
+torch.Size([64])
+model.submodule.up.3.weight_orig
+torch.Size([64, 260, 3, 3])
+model.submodule.submodule.down.1.weight_orig
+torch.Size([256, 132, 3, 3])
+model.submodule.submodule.up.3.bias
+torch.Size([128])
+model.submodule.submodule.up.3.weight_orig
+torch.Size([128, 516, 3, 3])
+model.submodule.submodule.submodule.down.1.weight_orig
+torch.Size([512, 260, 3, 3])
+model.submodule.submodule.submodule.up.3.bias
+torch.Size([256])
+model.submodule.submodule.submodule.up.3.weight_orig
+torch.Size([256, 1028, 3, 3])
+model.submodule.submodule.submodule.submodule.down.1.weight_orig
+torch.Size([512, 516, 3, 3])
+model.submodule.submodule.submodule.submodule.up.3.bias
+torch.Size([512])
+model.submodule.submodule.submodule.submodule.up.3.weight_orig
+torch.Size([512, 1028, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.down.1.weight_orig
+torch.Size([512, 516, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.up.3.bias
+torch.Size([512])
+model.submodule.submodule.submodule.submodule.submodule.up.3.weight_orig
+torch.Size([512, 1028, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.submodule.down.1.weight_orig
+torch.Size([512, 516, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.submodule.up.3.bias
+torch.Size([512])
+model.submodule.submodule.submodule.submodule.submodule.submodule.up.3.weight_orig
+torch.Size([512, 1028, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.submodule.submodule.down.1.weight
+torch.Size([512, 516, 3, 3])
+model.submodule.submodule.submodule.submodule.submodule.submodule.submodule.up.3.bias
+torch.Size([512])
+model.submodule.submodule.submodule.submodule.submodule.submodule.submodule.up.3.weight_orig
+torch.Size([512, 516, 3, 3])
+initialize network with normal
+There are 512 channels in Discriminator
+model.0.weight
+torch.Size([64, 3, 4, 4])
+model.0.bias
+torch.Size([64])
+model.2.bias
+torch.Size([128])
+model.2.weight_orig
+torch.Size([128, 64, 4, 4])
+model.4.bias
+torch.Size([256])
+model.4.weight_orig
+torch.Size([256, 128, 4, 4])
+model.6.bias
+torch.Size([512])
+model.6.weight_orig
+torch.Size([512, 256, 4, 4])
+linear.weight
+torch.Size([1, 512])
+linear.bias
+torch.Size([1])
+embed_noise.bias
+torch.Size([512])
+embed_noise.weight_orig
+torch.Size([512, 4])
+initialize network with normal
+There are 512 channels in Discriminator
+model.0.weight
+torch.Size([64, 3, 4, 4])
+model.0.bias
+torch.Size([64])
+model.2.bias
+torch.Size([128])
+model.2.weight_orig
+torch.Size([128, 64, 4, 4])
+model.4.bias
+torch.Size([256])
+model.4.weight_orig
+torch.Size([256, 128, 4, 4])
+model.6.bias
+torch.Size([512])
+model.6.weight_orig
+torch.Size([512, 256, 4, 4])
+linear.weight
+torch.Size([1, 512])
+linear.bias
+torch.Size([1])
+embed_noise.bias
+torch.Size([512])
+embed_noise.weight_orig
+torch.Size([512, 4])
+initialize network with normal
+model [CycleGANModel] was created
+---------- Networks initialized -------------
+[Network G_A] Total number of parameters : 30.803 M
+[Network G_B] Total number of parameters : 30.803 M
+[Network D_A] Total number of parameters : 2.760 M
+[Network D_B] Total number of parameters : 2.760 M

@@ -40,7 +40,7 @@ class CycleGANModel(BaseModel):
         if is_train:
             parser.add_argument('--lambda_A', type=float, default=5, help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=5, help='weight for cycle loss (B -> A -> B)')
-            parser.add_argument('--lambda_identity', type=float, default=-0.5, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
+            parser.add_argument('--lambda_identity', type=float, default=2, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
 
         return parser
 
@@ -73,6 +73,7 @@ class CycleGANModel(BaseModel):
         # define networks (both Generators and discriminators)
         # The naming is different from those used in the paper.
         # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
+
         # print('this is process before generate network')
         # print(opt.norm_G)
         # print(opt.norm_D)
@@ -276,15 +277,16 @@ class CycleGANModel(BaseModel):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
         # forward
         # print('----------------begin train----------------')
-        self.forward()      # compute fake images and reconstruction images.
-        # print('----------------successfully forward----------------')
-        # G_A and G_B
-        self.set_requires_grad([self.netD_A, self.netD_B], False)  # Ds require no gradients when optimizing Gs
-        # print('--------------------------------------begin backward')
-        self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
-        self.backward_G()             # calculate gradients for G_A and G_B
-        # print('--------------------------------------')
-        self.optimizer_G.step()       # update G_A and G_B's weights
+        for number_G_D in range(5):
+            self.forward()      # compute fake images and reconstruction images.
+            # print('----------------successfully forward----------------')
+            # G_A and G_B
+            self.set_requires_grad([self.netD_A, self.netD_B], False)  # Ds require no gradients when optimizing Gs
+            # print('--------------------------------------begin backward')
+            self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
+            self.backward_G()             # calculate gradients for G_A and G_B
+            # print('--------------------------------------')
+            self.optimizer_G.step()       # update G_A and G_B's weights
         # D_A and D_B
         self.set_requires_grad([self.netD_A, self.netD_B], True)
         self.optimizer_D.zero_grad()   # set D_A and D_B's gradients to zero

@@ -483,6 +483,7 @@ class UnetGenerator(nn.Module):
 
         for name, param in self.named_parameters():
             print(name)
+            print(param.shape)
 
     def forward(self, input, z):
         """Standard forward"""
@@ -525,15 +526,11 @@ class UnetSkipConnectionBlock(nn.Module):
         if input_nc is None:
             input_nc = outer_nc
 
-        # downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=4,
-        #                      stride=2, padding=1, bias=use_bias)
         downrelu = nn.LeakyReLU(0.2)
-        # downnorm = norm_layer(inner_nc + self.nz)
         uprelu = nn.ReLU()
-        # upnorm = norm_layer(outer_nc)
 
         if outermost:
-            downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
+            downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
             down = [downconv]
 
             up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
@@ -541,8 +538,6 @@ class UnetSkipConnectionBlock(nn.Module):
             upconv = nn.Conv2d(inner_nc * 2, outer_nc, kernel_size=3, stride=1, padding=0)
             up = [uprelu, up, uppad, upconv, nn.Tanh()]
         elif innermost:
-            # self.gamma = nn.Parameter(torch.tensor(1e-9))
-
             downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
             down = [downrelu, downconv]
 
@@ -550,22 +545,13 @@ class UnetSkipConnectionBlock(nn.Module):
             uppad = nn.ReflectionPad2d(1)
             upconv = nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
             if norm == 'spectral':
-                # print('this is the innerest')
                 upnorm = norm_layer(nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
                 up = [uprelu, up_sample, uppad, upnorm]
-                # print(upnorm)
             else:
-                # print('Don\'t use spectral normalization' )
                 upnorm = norm_layer(outer_nc)
                 up = [uprelu, up_sample, uppad, upconv, upnorm]
 
-            # model = down + up
         else:
-            # print('this is the middle')
-            # print(norm)
-
-            # self.gamma = nn.Parameter(torch.tensor(1e-9))
-
             if attention:
                 self.f = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
                 self.g = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
@@ -584,26 +570,20 @@ class UnetSkipConnectionBlock(nn.Module):
                     downnorm = norm_layer(inner_nc)
                     down = [downrelu, downconv, downnorm]
 
-
                 up_sampling = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
                 uppad = nn.ReflectionPad2d(1)
                 if norm == 'spectral':
-                    # print('this use spectral normaltization')
                     upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
                     up = [uprelu, up_sampling, uppad, upnorm]
                 else:
-                    # print('Don\'t use spectral normalization' )
                     upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
                     upnorm = norm_layer(outer_nc)
                     up = [uprelu, up_sampling, uppad, upconv, upnorm]
             else:
                 if norm == 'spectral':
-                    # print('this use spectral normaltization')
-                    # print('this use spectral normaltization')
                     downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias))
                     down = [downrelu, downnorm]
                 else:
-                    # print('Don\'t use spectral normalization' )
                     downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias)
                     downnorm = norm_layer(inner_nc)
                     down = [downrelu, downconv, downnorm]
@@ -612,7 +592,6 @@ class UnetSkipConnectionBlock(nn.Module):
                     upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1))
                     up = [uprelu, upnorm]
                 else:
-                    # print('Don\'t use spectral normalization' )
                     upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1)
                     upnorm = norm_layer(outer_nc)
                     up = [uprelu, upconv, upnorm]
@@ -625,72 +604,31 @@ class UnetSkipConnectionBlock(nn.Module):
 
     def forward(self, x, z):
         if self.outermost:
-            # print('this is outermost')
-            # print(x.shape)
-            # print('This is a new beginning')
-
-            x1 = self.down(x)
-            # print('----------------------------------')
-            # print(x1.shape)
+            noise = z.view(z.size(0), z.size(1), 1, 1).expand(z.size(0), z.size(1), x.size(2), x.size(3))
+            x_noise = torch.cat([x, noise], 1)
+            x1 = self.down(x_noise)
 
             x2 = self.submodule(x1, z)
+
             output = self.up(x2)
-
-            # print('after up')
-            # print(z.shape)
-            #
-            # print('this is a end of one iteration')
-            # print(output.shape)
             return output
-        # if self.innermost:
         else:
-            # print(self.nz)
-            # step 1: compute self attention feature map
-
-
-            # step 2: add the noise plane if the layer is the innerest
-
-            # print('not outest')
-            # print(z.shape)
-            # z_layer = z[:, 0:self.nz]
-            # z = z[:, self.nz:]
             z_layer = z
-
             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x.size(2), x.size(3))
             x_and_noise = torch.cat([x, noise], 1)
-
-            # print('x0 size is')
-            # print(x_and_noise.shape)
-            # print('this is down')
-
             x1 = self.down(x_and_noise)
-            # print('x1 size is ')
-            # print(x1.shape)
 
-            # print('this is submodule')
-            # print(z.shape)
             if self.submodule is not None:
                 x2 = self.submodule(x1, z)
             else:
                 x2 = x1
 
-            # print('x2 size is')
-            # print(x2.shape)
-            #
-            # print('this is up')
-
-            # z_layer = z[:, 0:self.nz]
-            # z = z[:, self.nz:]
-
             noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x2.size(2), x2.size(3))
-            # print(noise.shape)
             x_and_noise = torch.cat([x2, noise], 1)
-            # print('This is up sampling')
             out = self.up(x_and_noise)
 
             if self.attention:
                 batch_size, channels, height, width = x.size()
-                # assert channels == self.in_channels
                 f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
                 g = self.g(x).view(batch_size, -1, height * width)                       # B * C//8 * (H * W)
 
@@ -698,18 +636,11 @@ class UnetSkipConnectionBlock(nn.Module):
                 attention = self.softmax(attention)
 
                 h = self.h(x).view(batch_size, channels, -1)                       # B * C * (H * W)
-                #
                 self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
 
-                # output = out + self_attention_map # * self.gamma
                 output = torch.cat([out, self_attention_map], 1)
             else:
-                # output = out + x # * self.gamma
-                # if add:
                 output = torch.cat([out, x], 1)
-
-            # print(self.gamma)
-
 
             return output
 
@@ -1244,6 +1175,10 @@ class NLayerDiscriminator(nn.Module):
         self.embed_noise = nn.utils.spectral_norm(nn.Linear(self.nz_D, ndf * nf_mult))
 
         print('There are {:d} channels in Discriminator'.format(ndf * nf_mult))
+
+        for name, param in self.named_parameters():
+            print(name)
+            print(param.shape)
 
     def forward(self, input, noise):
         """Standard forward."""
