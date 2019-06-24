@@ -54,7 +54,7 @@ class Pix2PixModel(BaseModel):
             self.model_names = ['G']
         # define networks (both generator and discriminator)
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                      not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                      not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, nz=opt.noise_length)
 
         if self.isTrain:  # define a discriminator; conditional GANs need to take both input and output images; Therefore, #channels for D is input_nc + output_nc
             self.netD = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
@@ -83,9 +83,20 @@ class Pix2PixModel(BaseModel):
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
+    def get_noise(self, batch_size, nz, random_type='uniform'):
+        if random_type == 'uniform':
+            z = torch.rand(batch_size, nz) * 2 - 1.0
+        elif random_type == 'gauss':
+            # z = torch.ones(batch_size, nz)
+            z = torch.randn(batch_size, nz)
+        else:
+            NotImplementedError('Please check the function of generate noise')
+        return z.to(self.device)
+
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.fake_B = self.netG(self.real_A)  # G(A)
+        z = self.get_noise(self.real_A.size(0), self.opt.noise_length)
+        self.fake_B = self.netG(self.real_A, z)  # G(A)
 
     def backward_D(self):
         """Calculate GAN loss for the discriminator"""

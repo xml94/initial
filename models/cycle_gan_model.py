@@ -78,9 +78,9 @@ class CycleGANModel(BaseModel):
         # print(opt.norm_G)
         # print(opt.norm_D)
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm_G, not opt.no_dropout,
-                                        opt.init_type, opt.init_gain, self.gpu_ids, nz=opt.noise_length)
+                                        opt.init_type, opt.init_gain, self.gpu_ids, nz=opt.nz)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm_G, not opt.no_dropout,
-                                        opt.init_type, opt.init_gain, self.gpu_ids, nz=opt.noise_length)
+                                        opt.init_type, opt.init_gain, self.gpu_ids, nz=opt.nz)
 
         # print('parameters are these:---------------------------------------------')
         # for name, param in self.netG_A.named_parameters():
@@ -92,9 +92,9 @@ class CycleGANModel(BaseModel):
 
         if self.isTrain:  # define discriminators
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm_D, opt.init_type, opt.init_gain, self.gpu_ids, nz_D=self.opt.nz_D)
+                                            opt.n_layers_D, opt.norm_D, opt.init_type, opt.init_gain, self.gpu_ids, nz_D=self.opt.nz)
             self.netD_B = networks.define_D(opt.input_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm_D, opt.init_type, opt.init_gain, self.gpu_ids, nz_D=self.opt.nz_D)
+                                            opt.n_layers_D, opt.norm_D, opt.init_type, opt.init_gain, self.gpu_ids, nz_D=self.opt.nz)
 
         if self.isTrain:
             if opt.lambda_identity > 0.0:  # only works when input and output images have the same number of channels
@@ -129,13 +129,13 @@ class CycleGANModel(BaseModel):
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def get_noise(self, batch_size, nz, random_type='uniform'):
-        if random_type == 'uniform':
-            z = torch.rand(batch_size, nz) * 2 - 1.0
-        elif random_type == 'gauss':
+        # if random_type == 'uniform':
+        #     z = torch.rand(batch_size, nz) * 2 - 1.0
+        # elif random_type == 'gauss':
             # z = torch.ones(batch_size, nz)
-            z = torch.randn(batch_size, nz) * 0.1
-        else:
-            NotImplementedError('Please check the function of generate noise')
+        z = torch.randn(batch_size, nz, 256, 256)
+        # else:
+        #     NotImplementedError('Please check the function of generate noise')
         return z.to(self.device)
 
     def forward(self):
@@ -143,7 +143,7 @@ class CycleGANModel(BaseModel):
 
         if self.isTrain:
 
-            noise = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number, random_type=self.opt.random_type)
+            noise = self.get_noise(self.real_A.size(0), self.opt.nz)
             self.noise = noise
             # print('this is new epoch')
             # print(z.shape)
@@ -165,7 +165,7 @@ class CycleGANModel(BaseModel):
 
         else: # generate more images for every single input image
 
-            z_0 = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number)
+            z_0 = self.get_noise(self.real_A.size(0), self.opt.nz)
             # print('{:-^80}'.format('this is debug'))
             # print(z_0.shape)
 
@@ -242,12 +242,12 @@ class CycleGANModel(BaseModel):
         # Identity loss
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
-            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number)
+            z = self.get_noise(self.real_A.size(0), self.opt.nz)
             self.idt_A = self.netG_A(self.real_B, z)
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
 
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
-            z = self.get_noise(self.real_A.size(0), self.opt.noise_length*self.opt.noise_number)
+            z = self.get_noise(self.real_A.size(0), self.opt.nz)
             self.idt_B = self.netG_B(self.real_A, z)
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:

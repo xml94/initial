@@ -475,7 +475,7 @@ class UnetGenerator(nn.Module):
             unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, nz=nz,
                                                  norm=norm, use_dropout=use_dropout, attention=False, downsize=True)
         # gradually reduce the number of filters from ngf * 8 to ngf
-        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm=norm, attention=False, nz=nz,)
+        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm=norm, attention=False, nz=nz)
         unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm=norm, nz=nz, attention=False)
         unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm=norm, nz=nz, attention=False)
         self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, nz=nz,
@@ -487,7 +487,8 @@ class UnetGenerator(nn.Module):
 
     def forward(self, input, z):
         """Standard forward"""
-        return self.model(input, z)
+        input_and_noise = torch.cat([input, z], 1)
+        return self.model(input_and_noise)
 
 
 
@@ -538,109 +539,69 @@ class UnetSkipConnectionBlock(nn.Module):
             upconv = nn.Conv2d(inner_nc * 2, outer_nc, kernel_size=3, stride=1, padding=0)
             up = [uprelu, up, uppad, upconv, nn.Tanh()]
         elif innermost:
-            downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
+            downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
             down = [downrelu, downconv]
 
             up_sample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
             uppad = nn.ReflectionPad2d(1)
-            upconv = nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
+            upconv = nn.Conv2d(inner_nc, outer_nc, kernel_size=3, stride=1, padding=0)
             if norm == 'spectral':
-                upnorm = norm_layer(nn.Conv2d(inner_nc + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
+                upnorm = norm_layer(nn.Conv2d(inner_nc, outer_nc, kernel_size=3, stride=1, padding=0))
                 up = [uprelu, up_sample, uppad, upnorm]
             else:
                 upnorm = norm_layer(outer_nc)
                 up = [uprelu, up_sample, uppad, upconv, upnorm]
 
         else:
-            if attention:
-                self.f = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
-                self.g = nn.Conv2d(in_channels=input_nc, out_channels=input_nc // 8, kernel_size=1)
-                self.h = nn.Conv2d(in_channels=input_nc, out_channels=input_nc, kernel_size=1)
-                self.softmax = nn.Softmax(dim=2)
-
-
-            if downsize:
-                if norm == 'spectral':
-                    # print('this use spectral normaltization')
-                    downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias))
-                    down = [downrelu, downnorm]
-                else:
-                    # print('Don\'t use spectral normalization' )
-                    downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
-                    downnorm = norm_layer(inner_nc)
-                    down = [downrelu, downconv, downnorm]
+            if norm == 'spectral':
+                downnorm = norm_layer(nn.Conv2d(input_nc, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias))
+                down = [downrelu, downnorm]
 
                 up_sampling = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
                 uppad = nn.ReflectionPad2d(1)
-                if norm == 'spectral':
-                    upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0))
-                    up = [uprelu, up_sampling, uppad, upnorm]
-                else:
-                    upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=0)
-                    upnorm = norm_layer(outer_nc)
-                    up = [uprelu, up_sampling, uppad, upconv, upnorm]
+                upnorm = norm_layer(nn.Conv2d(inner_nc * 2, outer_nc, kernel_size=3, stride=1, padding=0))
+                up = [uprelu, up_sampling, uppad, upnorm]
             else:
-                if norm == 'spectral':
-                    downnorm = norm_layer(nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias))
-                    down = [downrelu, downnorm]
-                else:
-                    downconv = nn.Conv2d(input_nc + self.nz, inner_nc, kernel_size=3, stride=1, padding=1, bias=use_bias)
-                    downnorm = norm_layer(inner_nc)
-                    down = [downrelu, downconv, downnorm]
+                # print('Don\'t use spectral normalization' )
+                downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=3, stride=2, padding=1, bias=use_bias)
+                downnorm = norm_layer(inner_nc)
+                down = [downrelu, downconv, downnorm]
 
-                if norm == 'spectral':
-                    upnorm = norm_layer(nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1))
-                    up = [uprelu, upnorm]
-                else:
-                    upconv = nn.Conv2d(inner_nc * 2 + self.nz, outer_nc, kernel_size=3, stride=1, padding=1)
-                    upnorm = norm_layer(outer_nc)
-                    up = [uprelu, upconv, upnorm]
-
+                up_sampling = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+                uppad = nn.ReflectionPad2d(1)
+                upconv = nn.Conv2d(inner_nc * 2, outer_nc, kernel_size=3, stride=1, padding=0)
+                upnorm = norm_layer(outer_nc)
+                up = [uprelu, up_sampling, uppad, upconv, upnorm]
 
         self.down = nn.Sequential(*down)
         self.up = nn.Sequential(*up)
         self.submodule = submodule
 
 
-    def forward(self, x, z):
+    def forward(self, x):
         if self.outermost:
-            noise = z.view(z.size(0), z.size(1), 1, 1).expand(z.size(0), z.size(1), x.size(2), x.size(3))
-            x_noise = torch.cat([x, noise], 1)
-            x1 = self.down(x_noise)
 
-            x2 = self.submodule(x1, z)
+            # x_noise = torch.cat([x, z], 1)
+            x1 = self.down(x)
+
+            x2 = self.submodule(x1)
 
             output = self.up(x2)
             return output
         else:
-            z_layer = z
-            noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x.size(2), x.size(3))
-            x_and_noise = torch.cat([x, noise], 1)
-            x1 = self.down(x_and_noise)
+            # noise = z.view(z.size(0), z.size(1), 1, 1).expand(z.size(0), z.size(1), x.size(2), x.size(3))
+            # x_and_noise = torch.cat([x, noise], 1)
+            x1 = self.down(x)
 
-            if self.submodule is not None:
-                x2 = self.submodule(x1, z)
-            else:
-                x2 = x1
+            # if self.submodule is not None:
+            #     x2 = self.submodule(x1)
+            # else:
+            #     x2 = x1
+            x2 = x1
 
-            noise = z_layer.view(z_layer.size(0), z_layer.size(1), 1, 1).expand(z_layer.size(0), z_layer.size(1), x2.size(2), x2.size(3))
-            x_and_noise = torch.cat([x2, noise], 1)
-            out = self.up(x_and_noise)
+            out = self.up(x2)
 
-            if self.attention:
-                batch_size, channels, height, width = x.size()
-                f = self.f(x).view(batch_size, -1, height * width).permute(0, 2, 1)      # B * (H * W) * C//8
-                g = self.g(x).view(batch_size, -1, height * width)                       # B * C//8 * (H * W)
-
-                attention = torch.bmm(f, g)                                        # B * (H * W) * (H * W)
-                attention = self.softmax(attention)
-
-                h = self.h(x).view(batch_size, channels, -1)                       # B * C * (H * W)
-                self_attention_map = torch.bmm(h, attention).view(batch_size, channels, height, width) # B * C * H * W
-
-                output = torch.cat([out, self_attention_map], 1)
-            else:
-                output = torch.cat([out, x], 1)
+            output = torch.cat([out, x], 1)
 
             return output
 
@@ -1169,32 +1130,32 @@ class NLayerDiscriminator(nn.Module):
         # sequence += [nn.AdaptiveAvgPool2d(1)]
 
         self.model = nn.Sequential(*sequence)
-
-        self.linear = nn.Linear(ndf * nf_mult, 1)
-
-        self.embed_noise = nn.utils.spectral_norm(nn.Linear(self.nz_D, ndf * nf_mult))
-
-        print('There are {:d} channels in Discriminator'.format(ndf * nf_mult))
-
-        for name, param in self.named_parameters():
-            print(name)
-            print(param.shape)
+        #
+        # self.linear = nn.Linear(ndf * nf_mult, 1)
+        #
+        # self.embed_noise = nn.utils.spectral_norm(nn.Linear(self.nz_D, ndf * nf_mult))
+        #
+        # print('There are {:d} channels in Discriminator'.format(ndf * nf_mult))
+        #
+        # for name, param in self.named_parameters():
+        #     print(name)
+        #     print(param.shape)
 
     def forward(self, input, noise):
         """Standard forward."""
         out = self.model(input)
 
         # noise = noise.view(noise.size(0), noise.size(1), 1, 1).expand(noise.size(0), noise.size(1), input.size(2), input.size(3))
-        out = torch.nn.functional.relu(out).view(out.size(0), out.size(1), -1).sum(2) # B * C
-        out_linear = self.linear(out) # B * 1
-
-        noise = self.embed_noise(noise) # B * nz ==> B * C (specific)
-        label_noise = (noise * out).sum(1) # B * 1, noise shoule be B * C
-
-        output = out_linear + label_noise # B * 1
+        # out = torch.nn.functional.relu(out).view(out.size(0), out.size(1), -1).sum(2) # B * C
+        # out_linear = self.linear(out) # B * 1
+        #
+        # noise = self.embed_noise(noise) # B * nz ==> B * C (specific)
+        # label_noise = (noise * out).sum(1) # B * 1, noise shoule be B * C
+        #
+        # output = out_linear + label_noise # B * 1
         # print('this is D')
         # print(output.shape)
-        return output
+        return out
 
 
 class PixelDiscriminator(nn.Module):
