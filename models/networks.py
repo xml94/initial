@@ -1122,9 +1122,9 @@ class NLayerDiscriminator(nn.Module):
             sequence += [conv]
             sequence += [norm_layer(ndf * nf_mult)]
 
-        # sequence += [nn.LeakyReLU(0.2)]
+        sequence += [nn.LeakyReLU(0.2)]
 
-        # sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
+        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
 
         # sequence += [nn.AdaptiveAvgPool2d(1)]
 
@@ -1144,6 +1144,7 @@ class NLayerDiscriminator(nn.Module):
         """Standard forward."""
         input_noise = torch.cat([input, noise], 1)
         out = self.model(input_noise)
+        # print(out.shape)
 
         # noise = noise.view(noise.size(0), noise.size(1), 1, 1).expand(noise.size(0), noise.size(1), input.size(2), input.size(3))
         # out = torch.nn.functional.relu(out).view(out.size(0), out.size(1), -1).sum(2) # B * C
