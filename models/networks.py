@@ -481,9 +481,9 @@ class UnetGenerator(nn.Module):
         self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, nz=nz,
                                              norm=norm, attention=False)  # add the outermost layer
 
-        for name, param in self.named_parameters():
-            print(name)
-            print(param.shape)
+        # for name, param in self.named_parameters():
+        #     print(name)
+        #     print(param.shape)
 
     def forward(self, input, z):
         """Standard forward"""
@@ -593,11 +593,10 @@ class UnetSkipConnectionBlock(nn.Module):
             # x_and_noise = torch.cat([x, noise], 1)
             x1 = self.down(x)
 
-            # if self.submodule is not None:
-            #     x2 = self.submodule(x1)
-            # else:
-            #     x2 = x1
-            x2 = x1
+            if self.submodule is not None:
+                x2 = self.submodule(x1)
+            else:
+                x2 = x1
 
             out = self.up(x2)
 
@@ -1089,7 +1088,7 @@ class NLayerDiscriminator(nn.Module):
 
         kw = 4
         padw = 1
-        sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
+        sequence = [nn.Conv2d(input_nc + self.nz_D, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
         nf_mult = 1
         nf_mult_prev = 1
 
@@ -1143,7 +1142,8 @@ class NLayerDiscriminator(nn.Module):
 
     def forward(self, input, noise):
         """Standard forward."""
-        out = self.model(input)
+        input_noise = torch.cat([input, noise], 1)
+        out = self.model(input_noise)
 
         # noise = noise.view(noise.size(0), noise.size(1), 1, 1).expand(noise.size(0), noise.size(1), input.size(2), input.size(3))
         # out = torch.nn.functional.relu(out).view(out.size(0), out.size(1), -1).sum(2) # B * C
